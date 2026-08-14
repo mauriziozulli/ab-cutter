@@ -145,11 +145,15 @@ final class ExportQueue: ObservableObject {
             )
 
             do {
+                // The progress callback arrives on the encoder's queue. Bind a
+                // strong reference here so the hop back to the main actor is
+                // not capturing the mutable `weak self` slot.
                 try await ClipExporter.export(project: project, request: request) { [weak self] value in
+                    guard let queue = self else { return }
                     Task { @MainActor in
-                        guard let self, index < self.jobs.count else { return }
-                        if case .running = self.jobs[index].state {
-                            self.jobs[index].state = .running(value)
+                        guard index < queue.jobs.count else { return }
+                        if case .running = queue.jobs[index].state {
+                            queue.jobs[index].state = .running(value)
                         }
                     }
                 }

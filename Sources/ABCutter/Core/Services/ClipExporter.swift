@@ -135,6 +135,7 @@ enum ClipExporter {
         )
         videoInput.expectsMediaDataInRealTime = false
         guard writer.canAdd(videoInput) else {
+            reader.cancelReading()
             throw ExportError.writerSetupFailed("The video encoder rejected the requested settings.")
         }
         writer.add(videoInput)
