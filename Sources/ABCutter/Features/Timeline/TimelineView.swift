@@ -14,6 +14,25 @@ struct TimelineView: View {
     private let clipLaneHeight: CGFloat = 26
     private let laneHeight: CGFloat = 40
 
+    /// What a drag on the clip lane grabbed, captured once when it starts so
+    /// every subsequent delta is measured from the same origin.
+    private struct ClipDrag {
+        enum Handle {
+            case move
+            case trimIn
+            case trimOut
+            case split
+        }
+
+        var clipID: UUID
+        var handle: Handle
+        var originStart: Double
+        var originEnd: Double
+        var originSplit: Double
+    }
+
+    @State private var clipDrag: ClipDrag?
+
     /// Seconds covered by the whole visible strip.
     private var visibleDuration: Double {
         max(state.project.timelineDuration / max(state.zoom, 1), 1)
@@ -278,16 +297,106 @@ struct TimelineView: View {
     private func scrubGesture(width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                guard value.location.y < rulerHeight + clipLaneHeight else { return }
+                guard value.location.y < rulerHeight else { return }
                 player.seek(to: seconds(forX: value.location.x, width: width))
             }
+    }
+
+    /// Works out what a drag grabbed: an edge, the split marker, or the body.
+    private func beginClipDrag(atX x: CGFloat, width: CGFloat) -> ClipDrag? {
+        let time = seconds(forX: x, width: width)
+        // Eight points of slop, expressed in seconds at the current zoom.
+        let slop = Double(8 / max(width, 1)) * visibleDuration
+
+        // Later clips are drawn on top, so they win a hit test.
+        for clip in state.project.clips.reversed() {
+            guard time >= clip.start - slop, time <= clip.end + slop else { continue }
+
+            let handle: ClipDrag.Handle
+            if abs(time - clip.start) <= slop {
+                handle = .trimIn
+            } else if abs(time - clip.end) <= slop {
+                handle = .trimOut
+            } else if abs(time - clip.splitTime) <= slop {
+                handle = .split
+            } else {
+                handle = .move
+            }
+
+            return ClipDrag(
+                clipID: clip.id,
+                handle: handle,
+                originStart: clip.start,
+                originEnd: clip.end,
+                originSplit: clip.splitTime
+            )
+        }
+        return nil
+    }
+
+    private func applyClipDrag(_ drag: ClipDrag, delta: Double) {
+        // With a fixed house length an edge drag slides the window rather than
+        // trimming it, matching what Mark in / Mark out do.
+        let locked = state.project.keepClipLengthFixed
+
+        switch drag.handle {
+        case .move:
+            state.moveClip(drag.clipID, toStart: drag.originStart + delta)
+        case .trimIn:
+            if locked {
+                state.moveClip(drag.clipID, toStart: drag.originStart + delta)
+            } else {
+                state.trimClip(drag.clipID, start: drag.originStart + delta, end: drag.originEnd)
+            }
+        case .trimOut:
+            if locked {
+                state.moveClip(drag.clipID, toStart: drag.originStart + delta)
+            } else {
+                state.trimClip(drag.clipID, start: drag.originStart, end: drag.originEnd + delta)
+            }
+        case .split:
+            state.setSplit(drag.clipID, to: drag.originSplit + delta)
+        }
+    }
+
+    /// The clip lane: drag a body to move it, an edge to trim, the dashed mark
+    /// to move the A/B switch. Empty space scrubs.
+    private func clipLaneStrip(width: CGFloat) -> some View {
+        Color.clear
+            .frame(height: clipLaneHeight)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if clipDrag == nil {
+                            clipDrag = beginClipDrag(atX: value.startLocation.x, width: width)
+                            if let clipDrag {
+                                state.focusClip(clipDrag.clipID)
+                            }
+                        }
+                        guard let clipDrag else {
+                            player.seek(to: seconds(forX: value.location.x, width: width))
+                            return
+                        }
+                        let delta = Double(value.translation.width / max(width, 1)) * visibleDuration
+                        applyClipDrag(clipDrag, delta: delta)
+                    }
+                    .onEnded { _ in
+                        if clipDrag != nil {
+                            clipDrag = nil
+                            // One rebuild at the end rather than one per pixel.
+                            state.applyPlayerSettings()
+                        }
+                    }
+            )
     }
 
     /// One invisible strip per audio lane that turns a horizontal drag into a
     /// sync offset.
     private func laneDragOverlay(width: CGFloat) -> some View {
         VStack(spacing: 0) {
-            Spacer().frame(height: rulerHeight + clipLaneHeight)
+            Spacer().frame(height: rulerHeight)
+            clipLaneStrip(width: width)
             ForEach(visibleSources) { source in
                 LaneDragStrip(
                     height: laneHeight,

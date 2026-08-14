@@ -28,8 +28,7 @@ struct ExportRequest {
     var format: SocialFormat
     var settings: ExportSettings
     var outputURL: URL
-    var beforeLabel: CGImage?
-    var afterLabel: CGImage?
+    var overlays: ClipOverlays
 }
 
 /// Renders one clip into one social format using an AVAssetReader →
@@ -55,9 +54,12 @@ enum ClipExporter {
             splitTime: clipComposition.splitTime,
             beforeLook: request.settings.beforeLook,
             afterLook: request.settings.afterLook,
-            beforeLabel: request.settings.showLabels ? request.beforeLabel : nil,
-            afterLabel: request.settings.showLabels ? request.afterLabel : nil,
+            frameTreatment: request.settings.frameTreatment,
+            frameBackdrop: request.settings.frameBackdrop,
+            insetScale: request.settings.insetScale,
             labelPosition: request.settings.labelPosition,
+            beforeOverlay: request.overlays.before,
+            afterOverlay: request.overlays.after,
             sourceNaturalSize: clipComposition.videoNaturalSize,
             sourcePreferredTransform: clipComposition.videoPreferredTransform
         )

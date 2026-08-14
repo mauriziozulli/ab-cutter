@@ -123,9 +123,10 @@ final class ExportQueue: ObservableObject {
 
             jobs[index].state = .running(0)
 
-            // Labels are built per clip and format: a tinted one has to read
-            // the picture it will sit on, which differs with every crop.
-            let labels = await LabelFactory.labels(
+            // Overlays are built per clip and format: a tinted label has to
+            // read the picture it will sit on, and the frame border follows
+            // the crop, both of which differ with every format.
+            let overlays = await LabelFactory.overlays(
                 project: project,
                 clip: clip,
                 format: jobs[index].format
@@ -135,8 +136,7 @@ final class ExportQueue: ObservableObject {
                 format: jobs[index].format,
                 settings: project.export,
                 outputURL: jobs[index].outputURL,
-                beforeLabel: labels.before,
-                afterLabel: labels.after
+                overlays: overlays
             )
 
             do {

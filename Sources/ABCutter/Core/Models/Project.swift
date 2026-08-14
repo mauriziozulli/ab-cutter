@@ -144,6 +144,56 @@ enum FitMode: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// How the picture is framed on each side of the A/B switch.
+///
+/// A scale change reads far faster than a colour change on a phone, and on an
+/// audio A/B — where both halves show the identical picture — it is the only
+/// treatment that carries real motion. The picture snapping out to full bleed
+/// at the switch mirrors what the sound does.
+enum FrameTreatment: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// Before sits inset in a bordered frame, after fills the canvas.
+    case insetBefore
+    /// Both halves inset — tidier, but the switch loses its snap.
+    case insetBoth
+    /// Full bleed throughout; the grade alone marks the switch.
+    case fullBleed
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .insetBefore: "Framed before → full bleed"
+        case .insetBoth: "Framed throughout"
+        case .fullBleed: "Full bleed"
+        }
+    }
+
+    func isInset(before: Bool) -> Bool {
+        switch self {
+        case .insetBefore: before
+        case .insetBoth: true
+        case .fullBleed: false
+        }
+    }
+}
+
+/// What fills the canvas around an inset picture.
+enum FrameBackdrop: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// A blurred, darkened copy of the same frame.
+    case blur
+    /// A near-black card.
+    case solid
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .blur: "Blurred frame"
+        case .solid: "Near black"
+        }
+    }
+}
+
 /// How the burnt-in before/after label is drawn.
 enum LabelStyle: String, Codable, CaseIterable, Identifiable, Sendable {
     /// Bold plain type, tinted with the dominant hue of the cropped frame.
@@ -252,11 +302,20 @@ struct ExportSettings: Codable, Hashable {
     var outputFolderPath: String?
     var codec: VideoCodecChoice = .h264
     var fitMode: FitMode = .fill
-    var beforeLook: LookStyle = .blackAndWhite
+    /// Muted rather than monochrome by default: the frame carries the switch,
+    /// so the before half keeps its colour instead of going flat.
+    var beforeLook: LookStyle = .desaturated
     var afterLook: LookStyle = .color
+    var frameTreatment: FrameTreatment = .insetBefore
+    var frameBackdrop: FrameBackdrop = .blur
+    /// How much of the canvas an inset picture covers, 0.6 … 0.98.
+    var insetScale: Double = 0.86
+    var showFrameBorder: Bool = true
     var showLabels: Bool = true
     var beforeLabel: String = "VORHER"
     var afterLabel: String = "NACHHER"
+    /// A quieter second line under the label — film title, direction, credits.
+    var subtitleText: String = ""
     var labelPosition: LabelPosition = .bottom
     var labelStyle: LabelStyle = .tinted
     var labelShadow: LabelShadowMode = .auto

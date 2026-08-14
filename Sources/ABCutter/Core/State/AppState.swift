@@ -370,11 +370,65 @@ final class AppState: ObservableObject {
         updateClip(clip)
     }
 
-    /// Slides the selected clip so it begins at `start`, keeping its length.
-    func moveSelectedClip(toStart start: Double) {
-        guard let clip = selectedClip else { return }
-        let length = project.keepClipLengthFixed ? project.defaultClipLengthSeconds : clip.duration
-        updateClip(reshaped(clip, start: start, length: length))
+    /// Selects a clip without moving the playhead — used while dragging, where
+    /// a seek would fight the gesture.
+    func focusClip(_ id: UUID) {
+        guard selectedClipID != id else { return }
+        selectedClipID = id
+    }
+
+    // MARK: - Direct manipulation
+    //
+    // These mutate the project without touching the player, because a drag
+    // fires many times a second and rebuilding a Core Image video composition
+    // per pixel would stall the gesture. The caller re-applies once on release.
+
+    /// Slides a clip so it begins at `start`, keeping its length and the
+    /// relative position of the A/B switch.
+    func moveClip(_ id: UUID, toStart start: Double) {
+        guard let index = project.clips.firstIndex(where: { $0.id == id }) else { return }
+        let clip = project.clips[index]
+        let range = fittedRange(start: start, length: clip.duration)
+        let shift = range.start - clip.start
+        project.clips[index].start = range.start
+        project.clips[index].end = range.end
+        if let override = clip.splitOverride {
+            project.clips[index].splitOverride = override + shift
+        }
+    }
+
+    /// Trims one clip's edges directly.
+    func trimClip(_ id: UUID, start: Double, end: Double) {
+        guard let index = project.clips.firstIndex(where: { $0.id == id }) else { return }
+        let limit = project.videoDurationSeconds
+        let minimum = max(project.frameDuration, 0.04)
+
+        var begin = min(max(start, 0), max(limit - minimum, 0))
+        var finish = min(max(end, minimum), limit)
+        if finish - begin < minimum {
+            // Whichever edge moved is the one that gives way.
+            if abs(begin - project.clips[index].start) > abs(finish - project.clips[index].end) {
+                begin = finish - minimum
+            } else {
+                finish = begin + minimum
+            }
+        }
+
+        project.clips[index].start = max(begin, 0)
+        project.clips[index].end = min(finish, limit)
+        if let override = project.clips[index].splitOverride {
+            project.clips[index].splitOverride = min(
+                max(override, project.clips[index].start),
+                project.clips[index].end
+            )
+        }
+    }
+
+    /// Moves one clip's A/B switch directly.
+    func setSplit(_ id: UUID, to seconds: Double) {
+        guard let index = project.clips.firstIndex(where: { $0.id == id }) else { return }
+        let clip = project.clips[index]
+        project.clips[index].splitOverride = min(max(seconds, clip.start), clip.end)
     }
 
     /// Changes one clip's own length, anchored on its in point.
@@ -423,13 +477,9 @@ final class AppState: ObservableObject {
     func refreshPreviewLabels() {
         labelTask?.cancel()
 
-        guard let format = player.previewFormat,
-              let clip = selectedClip,
-              project.export.showLabels
-        else {
-            guard player.previewBeforeLabel != nil || player.previewAfterLabel != nil else { return }
-            player.previewBeforeLabel = nil
-            player.previewAfterLabel = nil
+        guard let format = player.previewFormat, let clip = selectedClip else {
+            guard player.previewOverlays.before != nil || player.previewOverlays.after != nil else { return }
+            player.previewOverlays = .empty
             player.apply(project: project, selectedClip: selectedClip)
             return
         }
@@ -438,10 +488,9 @@ final class AppState: ObservableObject {
         labelTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 300_000_000)
             if Task.isCancelled { return }
-            let labels = await LabelFactory.labels(project: snapshot, clip: clip, format: format)
+            let overlays = await LabelFactory.overlays(project: snapshot, clip: clip, format: format)
             guard let self, !Task.isCancelled else { return }
-            self.player.previewBeforeLabel = labels.before
-            self.player.previewAfterLabel = labels.after
+            self.player.previewOverlays = overlays
             self.player.apply(project: self.project, selectedClip: self.selectedClip)
         }
     }

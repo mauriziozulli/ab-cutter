@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.0 — framed before, second line, draggable clips
+
+- The before half can now sit inset in a bordered frame and snap out to full
+  bleed at the switch. On an audio A/B both halves show the identical picture,
+  so a scale change is the only treatment that carries real motion — and it
+  reads faster on a phone than a colour change does. The canvas around the
+  inset picture is a blurred, darkened copy of the frame, or a near-black card.
+- Because the frame now carries the switch, the before half defaults to muted
+  colour rather than black and white. Monochrome is still one click away.
+- A hairline border around the inset picture, drawn in the same tint as the
+  label.
+- A quieter second line under the before/after label for a film title,
+  direction or credits. It is centred with the label and carries its tint.
+- Clips are directly manipulable on the timeline: drag the body to move,
+  an edge to trim, the dashed mark to move the A/B switch. With the house
+  length locked, an edge drag slides the window instead of trimming, matching
+  Mark in and Mark out. The player is rebuilt once on release rather than once
+  per pixel.
+- The frame furniture — border, label, second line — is drawn once per half as
+  a full-canvas overlay instead of a small label image, which is what makes
+  laying type against the frame edge tractable.
+
 ## 0.3.0 — labels tinted from the picture
 
 - Burnt-in labels can now be bold plain type with no plate, coloured with the

@@ -2,8 +2,8 @@
 
 A small native macOS app for one job: lay every available audio version under
 a finished film, then cut social-media excerpts that switch from **before** to
-**after** halfway through — black & white with the original track on the first
-half, colour with your mix on the second.
+**after** halfway through — the first half framed and muted with the original
+track, the second snapping out to full bleed with your mix.
 
 No NLE round-trip, no manual re-crop for every aspect ratio.
 
@@ -20,10 +20,18 @@ lined up against the picture automatically — the offset is simply
 film and can be nudged frame by frame, typed in as a number, or dragged
 directly on its lane against the peak envelope.
 
+**Mark the switch visually.** On an audio A/B both halves show the identical
+picture, so the treatment has to carry the change on its own. A scale change
+does that better than a colour change: the before half sits inset in a
+bordered frame over a blurred backdrop and snaps out to full bleed at the
+switch, which reads instantly on a phone and mirrors what the sound is doing.
+Black and white remains available, along with muted colour and a plain full
+bleed.
+
 **Monitor the A/B.** The preview can solo any single layer, or follow the
 split exactly as the export will: before-source until the switch, after-source
-after it. It can also render the real 4:5 or 9:16 crop and the black & white
-grade while you scrub, so the framing is decided before anything is encoded.
+after it. It can also render the real 4:5 or 9:16 crop, the frame and the
+grade while you scrub, so everything is decided before anything is encoded.
 
 **Cut to a house length.** Set the length once — 10, 15, 20, 30, 60 seconds
 or anything you type — and every new clip is that long. With the length locked,
@@ -78,9 +86,10 @@ so the first launch needs **right-click → Open**.
 | Duration, size, channels | `Core/Services/MediaProbe.swift` |
 | Peak envelopes | `Core/Services/WaveformExtractor.swift` |
 | Track layout and A/B mix | `Core/Services/CompositionBuilder.swift` |
-| Crop, pan, grade, labels | `Core/Services/FrameRenderer.swift` |
+| Crop, pan, grade, framing | `Core/Services/FrameRenderer.swift` |
+| Border, label, second line | `Core/Services/OverlayRenderer.swift` |
 | Label tint sampling | `Core/Services/PaletteSampler.swift` |
-| Label assembly | `Core/Services/LabelFactory.swift` |
+| Overlay assembly | `Core/Services/LabelFactory.swift` |
 | Reader → writer encode | `Core/Services/ClipExporter.swift` |
 | Batch run | `Core/Services/ExportQueue.swift` |
 
@@ -96,18 +105,17 @@ rebuilds a fresh composition per clip so the clip always starts at zero.
 
 Each output file is one `AVAssetReader` → `AVAssetWriter` pass:
 
-- an `AVMutableVideoComposition` with a Core Image handler crops and scales the
-  frame into the target size, applies the before or after grade depending on
-  where the frame sits relative to the split, and composites the burnt-in
-  label;
+- an `AVMutableVideoComposition` with a Core Image handler places the picture
+  into its rect for that half — the full canvas, or an inset frame over a
+  blurred backdrop — applies the grade, and composites the overlay;
 - an `AVAudioMix` crossfades from the before-source to the after-source at the
   split;
-- the burnt-in label is drawn ahead of the pass, tinted with the dominant hue
-  of the cropped frame. The hue comes from the ungraded picture so the
-  black-and-white half keeps a coloured label, and only the hue is borrowed:
-  lightness is pushed away from the strip behind the text until the WCAG
-  contrast ratio clears a legible threshold, with a soft shadow as the
-  fallback where no tint can win;
+- the overlay — frame border, label and second line — is one full-canvas image
+  per half, drawn with AppKit ahead of the pass. It is tinted with the dominant
+  hue of the cropped frame, read from the ungraded picture so a monochrome half
+  still gets a coloured label. Only the hue is borrowed: lightness is pushed
+  away from the strip behind the text until the WCAG contrast ratio clears a
+  legible threshold, with a soft shadow as the fallback where no tint can win;
 - audio is decoded to LPCM and folded to stereo, so a 5.1 stem still delivers a
   usable social bed;
 - video is encoded as H.264 High (or HEVC) at a bitrate derived from the frame

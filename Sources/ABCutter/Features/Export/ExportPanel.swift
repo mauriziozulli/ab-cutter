@@ -9,6 +9,7 @@ struct ExportPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             formatsSection
+            frameSection
             lookSection
             deliverySection
             runSection
@@ -80,6 +81,49 @@ struct ExportPanel: View {
         )
     }
 
+    // MARK: - Frame
+
+    private var frameSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Frame", selection: exportBinding(\.frameTreatment)) {
+                ForEach(FrameTreatment.allCases) { treatment in
+                    Text(treatment.title).tag(treatment)
+                }
+            }
+            .controlSize(.small)
+
+            if state.project.export.frameTreatment != .fullBleed {
+                HStack(spacing: 6) {
+                    Text("Size")
+                        .font(.caption)
+                        .frame(width: 52, alignment: .leading)
+                    Slider(value: exportBinding(\.insetScale), in: 0.6...0.98)
+                        .controlSize(.mini)
+                    Text("\(Int(state.project.export.insetScale * 100)) %")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 42, alignment: .trailing)
+                }
+
+                Picker("Around", selection: exportBinding(\.frameBackdrop)) {
+                    ForEach(FrameBackdrop.allCases) { backdrop in
+                        Text(backdrop.title).tag(backdrop)
+                    }
+                }
+                .controlSize(.small)
+
+                Toggle("Hairline border", isOn: exportBinding(\.showFrameBorder))
+                    .toggleStyle(.checkbox)
+
+                Text("The picture snapping out to full bleed at the switch carries the A/B on its own — a scale change reads faster on a phone than a colour change.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .abCard()
+        .abSection("Framing")
+    }
+
     // MARK: - Look
 
     private var lookSection: some View {
@@ -122,6 +166,12 @@ struct ExportPanel: View {
                         .textFieldStyle(.roundedBorder)
                         .controlSize(.small)
                 }
+
+                TextField("Second line — title, direction, credits", text: exportBinding(\.subtitleText))
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                    .help("A quieter line centred under the label, the same on both halves")
+
                 Picker("Style", selection: exportBinding(\.labelStyle)) {
                     ForEach(LabelStyle.allCases) { style in
                         Text(style.title).tag(style)

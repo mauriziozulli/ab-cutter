@@ -34,41 +34,57 @@ enum PaletteSampler {
         videoURL: URL,
         at time: CMTime,
         format: SocialFormat,
-        fitMode: FitMode,
-        panX: Double,
-        panY: Double,
-        labelPosition: LabelPosition
+        settings: ExportSettings,
+        clip: Clip,
+        isBefore: Bool
     ) async -> LabelTint {
         guard let frame = await frameImage(videoURL: videoURL, at: time) else { return .white }
 
-        // A small proxy of the real output. Cropping is scale-invariant, so the
-        // sampled region matches the export exactly at a fraction of the cost.
+        // A small proxy of the real output. The layout is scale-invariant, so
+        // the sampled region matches the export exactly at a fraction of the
+        // cost. The looks are forced to colour: the before half is graded down,
+        // and a tint read off a monochrome frame would come back grey.
         let aspect = format.size.height / format.size.width
         let proxy = CGSize(width: 200, height: (200 * aspect).rounded())
         let plan = RenderPlan(
             targetSize: proxy,
-            fitMode: fitMode,
-            panX: panX,
-            panY: panY,
+            fitMode: settings.fitMode,
+            panX: clip.panX,
+            panY: clip.panY,
             splitTime: .zero,
             beforeLook: .color,
             afterLook: .color,
-            beforeLabel: nil,
-            afterLabel: nil,
-            labelPosition: labelPosition,
+            frameTreatment: settings.frameTreatment,
+            frameBackdrop: settings.frameBackdrop,
+            insetScale: settings.insetScale,
+            labelPosition: settings.labelPosition,
+            beforeOverlay: nil,
+            afterOverlay: nil,
             // The generator already applied the track transform.
             sourceNaturalSize: CGSize(width: frame.width, height: frame.height),
             sourcePreferredTransform: .identity
         )
 
-        let cropped = FrameRenderer.render(CIImage(cgImage: frame), at: .zero, plan: plan)
+        // `render` picks the half by comparing against the split, which sits at
+        // zero here — so the after look is what a non-negative time returns.
+        let sampleTime = isBefore ? CMTime(seconds: -1, preferredTimescale: 600) : .zero
+        let composed = FrameRenderer.render(CIImage(cgImage: frame), at: sampleTime, plan: plan)
         let context = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
 
-        let full = CGRect(origin: .zero, size: proxy)
-        guard let scene = pixels(of: cropped, in: full, context: context) else { return .white }
+        let pictureRect = FrameRenderer.pictureRect(
+            targetSize: proxy,
+            treatment: settings.frameTreatment,
+            isBefore: isBefore,
+            insetScale: settings.insetScale,
+            labelPosition: settings.labelPosition
+        )
+
+        // The hue comes from the picture itself, the contrast from whatever the
+        // type will actually sit on — backdrop included.
+        guard let scene = pixels(of: composed, in: pictureRect, context: context) else { return .white }
         let band = pixels(
-            of: cropped,
-            in: FrameRenderer.labelBand(targetSize: proxy, position: labelPosition),
+            of: composed,
+            in: FrameRenderer.labelBand(targetSize: proxy, pictureRect: pictureRect, position: settings.labelPosition),
             context: context
         ) ?? scene
 

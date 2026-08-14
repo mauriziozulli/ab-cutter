@@ -29,10 +29,9 @@ final class PlayerController: ObservableObject {
     /// Stops playback at the end of the selected clip.
     @Published var limitToClip = true
 
-    /// Burnt-in labels for the selected clip, sampled asynchronously by
-    /// `AppState` so the preview shows the same colours the export will.
-    var previewBeforeLabel: CGImage?
-    var previewAfterLabel: CGImage?
+    /// Frame furniture for the selected clip, built asynchronously by
+    /// `AppState` so the preview shows what the export will.
+    var previewOverlays = ClipOverlays.empty
 
     private var timeline: TimelineComposition?
     private var timeObserver: Any?
@@ -181,9 +180,12 @@ final class PlayerController: ObservableObject {
             splitTime: CMTime(seconds: clip?.splitTime ?? 0, preferredTimescale: 90_000),
             beforeLook: clip == nil ? project.export.afterLook : project.export.beforeLook,
             afterLook: project.export.afterLook,
-            beforeLabel: previewBeforeLabel,
-            afterLabel: previewAfterLabel,
+            frameTreatment: clip == nil ? .fullBleed : project.export.frameTreatment,
+            frameBackdrop: project.export.frameBackdrop,
+            insetScale: project.export.insetScale,
             labelPosition: project.export.labelPosition,
+            beforeOverlay: previewOverlays.before,
+            afterOverlay: previewOverlays.after,
             sourceNaturalSize: timeline.videoNaturalSize,
             sourcePreferredTransform: timeline.videoPreferredTransform
         )
