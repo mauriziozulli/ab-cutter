@@ -81,13 +81,28 @@ enum PaletteSampler {
 
         // The hue comes from the picture itself, the contrast from whatever the
         // type will actually sit on — backdrop included.
-        guard let scene = pixels(of: composed, in: pictureRect, context: context) else { return .white }
-        let band = pixels(
+        return tint(
             of: composed,
-            in: FrameRenderer.labelBand(targetSize: proxy, pictureRect: pictureRect, position: settings.labelPosition),
+            sceneRect: pictureRect,
+            bandRect: FrameRenderer.labelBand(
+                targetSize: proxy,
+                pictureRect: pictureRect,
+                position: settings.labelPosition
+            ),
             context: context
-        ) ?? scene
+        )
+    }
 
+    /// Reads a tint straight off an already-composed image — used by the title
+    /// card, whose background is blurred and dimmed before any type lands on it.
+    static func tint(
+        of image: CIImage,
+        sceneRect: CGRect,
+        bandRect: CGRect,
+        context: CIContext
+    ) -> LabelTint {
+        guard let scene = pixels(of: image, in: sceneRect, context: context) else { return .white }
+        let band = pixels(of: image, in: bandRect, context: context) ?? scene
         return tint(scene: scene, band: band)
     }
 

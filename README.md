@@ -46,6 +46,13 @@ into the minutes. The app therefore holds *your* length rather than
 hard-coding anyone's, which is also what keeps a set of before/after cuts
 looking like a series.
 
+**Make the cover image.** Park the playhead and grab that frame at the film's
+native resolution. The same grab doubles as a title card: cropped to every
+selected format, softened and darkened so type can sit on it, with a wrapping
+headline and a quieter second line. The tint of that type is read from the
+blurred backdrop rather than the raw frame, so it contrasts with what it
+actually lands on.
+
 **Batch-export.** The A/B switch defaults to the exact middle of each clip and
 can be moved anywhere. Export every enabled clip into every selected format in
 one run — 4:5, 9:16, 1:1 and 16:9 are all available, and the clip × format
@@ -92,6 +99,7 @@ so the first launch needs **right-click → Open**.
 | Overlay assembly | `Core/Services/LabelFactory.swift` |
 | Reader → writer encode | `Core/Services/ClipExporter.swift` |
 | Batch run | `Core/Services/ExportQueue.swift` |
+| Framegrabs and title cards | `Core/Services/StillExporter.swift` |
 
 ### The timeline model
 

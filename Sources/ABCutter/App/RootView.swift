@@ -21,6 +21,8 @@ struct RootView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         ClipsPanel(state: state)
                         Divider()
+                        StillsPanel(state: state)
+                        Divider()
                         ExportPanel(state: state, queue: state.exportQueue)
                     }
                     .padding(Theme.panelPadding)

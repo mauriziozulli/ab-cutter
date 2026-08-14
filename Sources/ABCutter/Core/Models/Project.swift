@@ -330,6 +330,62 @@ struct ExportSettings: Codable, Hashable {
     }
 }
 
+// MARK: - Stills
+
+enum StillTextPosition: String, Codable, CaseIterable, Identifiable, Sendable {
+    case top
+    case centre
+    case bottom
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .top: "Top"
+        case .centre: "Centre"
+        case .bottom: "Bottom"
+        }
+    }
+}
+
+enum StillFileFormat: String, Codable, CaseIterable, Identifiable, Sendable {
+    case png
+    case jpeg
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .png: "PNG (lossless)"
+        case .jpeg: "JPEG"
+        }
+    }
+
+    var fileExtension: String { self == .png ? "png" : "jpg" }
+}
+
+/// The cover image of a post: one frame grabbed at full resolution, optionally
+/// cropped to a social format and laid out as a title card.
+struct StillSettings: Codable, Hashable {
+    var headline: String = ""
+    var subline: String = ""
+    /// 0 … 100. Softens the picture so the type has somewhere to sit.
+    var blurStrength: Double = 45
+    /// 0 … 0.8. Darkens the picture under the type.
+    var dimStrength: Double = 0.3
+    var textPosition: StillTextPosition = .bottom
+    /// Write the untouched frame at its native resolution as well.
+    var saveFullFrame: Bool = true
+    /// Write a title card per selected social format.
+    var saveTitleCards: Bool = true
+    var fileFormat: StillFileFormat = .png
+
+    var hasText: Bool {
+        !headline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !subline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
 // MARK: - Project
 
 struct ABProject: Codable {
@@ -353,6 +409,7 @@ struct ABProject: Codable {
     /// Default "after" audio when a clip does not override it.
     var defaultAfterSourceID: UUID?
     var export = ExportSettings()
+    var stills = StillSettings()
 
     var videoURL: URL? {
         guard let videoPath else { return nil }

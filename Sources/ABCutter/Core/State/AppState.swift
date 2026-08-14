@@ -556,6 +556,119 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Stills
+
+    /// The frame currently held for the cover image, at full resolution.
+    @Published private(set) var grabbedFrame: CGImage?
+    @Published private(set) var grabbedAtSeconds: Double = 0
+    @Published private(set) var titleCardPreview: CGImage?
+
+    /// Format the title-card preview is rendered at — the framing preview when
+    /// one is chosen, otherwise the first selected output format.
+    var stillPreviewFormat: SocialFormat {
+        player.previewFormat ?? project.export.formats.first ?? .portrait916
+    }
+
+    func grabStill() {
+        guard let url = project.videoURL else {
+            errorMessage = "Load a video first."
+            return
+        }
+        let seconds = player.currentTime
+        Task { [weak self] in
+            do {
+                let frame = try await StillExporter.grab(videoURL: url, at: seconds)
+                guard let self else { return }
+                self.grabbedFrame = frame
+                self.grabbedAtSeconds = seconds
+                self.status = "Grabbed \(frame.width)×\(frame.height) at \(Timecode.clockString(fromSeconds: seconds))."
+                self.refreshTitleCardPreview()
+            } catch {
+                self?.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func refreshTitleCardPreview() {
+        guard let frame = grabbedFrame else {
+            titleCardPreview = nil
+            return
+        }
+        // Rendered small: the panel shows it at a couple of hundred points, and
+        // a full-size blur per slider tick would not keep up with the gesture.
+        let format = stillPreviewFormat
+        titleCardPreview = StillExporter.titleCard(
+            frame: frame,
+            format: format,
+            settings: project.stills,
+            fitMode: project.export.fitMode,
+            panX: selectedClip?.panX ?? 0,
+            panY: selectedClip?.panY ?? 0,
+            scale: min(1, 640 / format.size.height)
+        )
+    }
+
+    /// Writes the full-resolution frame and a title card per selected format.
+    func saveStills() {
+        guard let frame = grabbedFrame else {
+            errorMessage = "Grab a frame first."
+            return
+        }
+        guard let folder = project.export.outputFolderURL else {
+            chooseOutputFolder()
+            guard project.export.outputFolderURL != nil else { return }
+            saveStills()
+            return
+        }
+
+        let settings = project.stills
+        let stamp = Timecode.string(
+            fromSeconds: grabbedAtSeconds,
+            rate: project.frameRate,
+            dropFrame: project.dropFrame
+        ).replacingOccurrences(of: ":", with: "-")
+            .replacingOccurrences(of: ";", with: "-")
+        var written = 0
+
+        do {
+            if settings.saveFullFrame {
+                let url = folder.appendingPathComponent(
+                    "\(project.name)_\(stamp)_frame.\(settings.fileFormat.fileExtension)"
+                )
+                try StillExporter.write(frame, to: url, as: settings.fileFormat)
+                written += 1
+            }
+
+            if settings.saveTitleCards {
+                for format in project.export.formats {
+                    guard let card = StillExporter.titleCard(
+                        frame: frame,
+                        format: format,
+                        settings: settings,
+                        fitMode: project.export.fitMode,
+                        panX: selectedClip?.panX ?? 0,
+                        panY: selectedClip?.panY ?? 0
+                    ) else { continue }
+                    let url = folder.appendingPathComponent(
+                        "\(project.name)_\(stamp)_title_\(format.fileSuffix).\(settings.fileFormat.fileExtension)"
+                    )
+                    try StillExporter.write(card, to: url, as: settings.fileFormat)
+                    written += 1
+                }
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
+
+        guard written > 0 else {
+            errorMessage = "Nothing was selected to save."
+            return
+        }
+        status = "Wrote \(written) image\(written == 1 ? "" : "s") to \(folder.lastPathComponent)."
+        exportQueue.revealInFinder(folder)
+    }
+
     // MARK: - Export
 
     func chooseOutputFolder() {

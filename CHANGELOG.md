@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.0 — cover images
+
+- A Cover image section: park the playhead, grab that frame at the film's
+  native resolution, and save it as PNG or JPEG. The grab is frame-accurate,
+  not a nearby keyframe.
+- The same frame becomes a title card, cropped to every selected output format
+  so a post's cover matches the cut it leads.
+- A headline that wraps over up to three lines, plus a quieter second line for
+  direction or credits, positioned top, centre or bottom.
+- Blur and darken sliders soften the picture so the type has somewhere to sit.
+  The label tint is read off the *finished* backdrop rather than the raw frame,
+  so it contrasts with what the type actually lands on.
+- The preview renders at a proxy size and the delivery at full size, which is
+  what lets the sliders be judged against the picture in real time.
+
 ## 0.4.0 — framed before, second line, draggable clips
 
 - The before half can now sit inset in a bordered frame and snap out to full

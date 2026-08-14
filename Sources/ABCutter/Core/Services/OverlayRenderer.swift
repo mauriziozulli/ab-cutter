@@ -74,6 +74,108 @@ enum OverlayRenderer {
         return rep.cgImage
     }
 
+    /// The type for a title card: a large wrapping headline with an optional
+    /// quieter line under it. Separate from the clip label because a cover
+    /// image carries a sentence, not a word.
+    static func titleCard(
+        targetSize: CGSize,
+        headline: String,
+        subline: String,
+        tint: LabelTint,
+        position: StillTextPosition,
+        shadow: Bool
+    ) -> CGImage? {
+        let width = Int(targetSize.width.rounded())
+        let height = Int(targetSize.height.rounded())
+        let title = headline.trimmingCharacters(in: .whitespacesAndNewlines)
+        let caption = subline.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard width > 0, height > 0, !title.isEmpty || !caption.isEmpty else { return nil }
+
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: width,
+            pixelsHigh: height,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ), let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+
+        let colour = NSColor(srgbRed: tint.red, green: tint.green, blue: tint.blue, alpha: 1)
+        let titleSize = max(28, (targetSize.height * 0.072).rounded())
+        let captionSize = max(14, (titleSize * 0.34).rounded())
+        let gap = (titleSize * 0.34).rounded()
+        let margin = (targetSize.width * 0.09).rounded()
+        let textWidth = targetSize.width - margin * 2
+
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineHeightMultiple = 0.96
+
+        var titleAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: titleSize, weight: .bold),
+            .foregroundColor: colour,
+            .paragraphStyle: paragraph,
+            .kern: titleSize * 0.01
+        ]
+        var captionAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: captionSize, weight: .medium),
+            .foregroundColor: colour.withAlphaComponent(0.85),
+            .paragraphStyle: paragraph,
+            .kern: captionSize * 0.05
+        ]
+        if shadow {
+            let dropShadow = NSShadow()
+            dropShadow.shadowColor = NSColor(calibratedWhite: 0, alpha: 0.6)
+            dropShadow.shadowBlurRadius = titleSize * 0.22
+            dropShadow.shadowOffset = .zero
+            titleAttributes[.shadow] = dropShadow
+            captionAttributes[.shadow] = dropShadow
+        }
+
+        let titleText = title.isEmpty ? nil : NSAttributedString(string: title, attributes: titleAttributes)
+        let captionText = caption.isEmpty ? nil : NSAttributedString(string: caption, attributes: captionAttributes)
+
+        let bounds = CGSize(width: textWidth, height: .greatestFiniteMagnitude)
+        let options: NSString.DrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
+        let titleHeight = titleText?.boundingRect(with: bounds, options: options).height.rounded(.up) ?? 0
+        let captionHeight = captionText?.boundingRect(with: bounds, options: options).height.rounded(.up) ?? 0
+        let blockHeight = titleHeight + (titleText != nil && captionText != nil ? gap : 0) + captionHeight
+
+        let edge = (targetSize.height * 0.085).rounded()
+        let blockTop: CGFloat
+        switch position {
+        case .top: blockTop = targetSize.height - edge
+        case .centre: blockTop = (targetSize.height + blockHeight) / 2
+        case .bottom: blockTop = edge + blockHeight
+        }
+
+        // `usesLineFragmentOrigin` flows text downward from the top of the rect.
+        var cursor = blockTop
+        if let titleText {
+            titleText.draw(
+                with: CGRect(x: margin, y: cursor - titleHeight, width: textWidth, height: titleHeight),
+                options: options
+            )
+            cursor -= titleHeight + gap
+        }
+        if let captionText {
+            captionText.draw(
+                with: CGRect(x: margin, y: cursor - captionHeight, width: textWidth, height: captionHeight),
+                options: options
+            )
+        }
+
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.cgImage
+    }
+
     private static func drawText(
         heading: String,
         caption: String,
