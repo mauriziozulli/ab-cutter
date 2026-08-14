@@ -79,6 +79,8 @@ so the first launch needs **right-click → Open**.
 | Peak envelopes | `Core/Services/WaveformExtractor.swift` |
 | Track layout and A/B mix | `Core/Services/CompositionBuilder.swift` |
 | Crop, pan, grade, labels | `Core/Services/FrameRenderer.swift` |
+| Label tint sampling | `Core/Services/PaletteSampler.swift` |
+| Label assembly | `Core/Services/LabelFactory.swift` |
 | Reader → writer encode | `Core/Services/ClipExporter.swift` |
 | Batch run | `Core/Services/ExportQueue.swift` |
 
@@ -100,6 +102,12 @@ Each output file is one `AVAssetReader` → `AVAssetWriter` pass:
   label;
 - an `AVAudioMix` crossfades from the before-source to the after-source at the
   split;
+- the burnt-in label is drawn ahead of the pass, tinted with the dominant hue
+  of the cropped frame. The hue comes from the ungraded picture so the
+  black-and-white half keeps a coloured label, and only the hue is borrowed:
+  lightness is pushed away from the strip behind the text until the WCAG
+  contrast ratio clears a legible threshold, with a soft shadow as the
+  fallback where no tint can win;
 - audio is decoded to LPCM and folded to stereo, so a 5.1 stem still delivers a
   usable social bed;
 - video is encoded as H.264 High (or HEVC) at a bitrate derived from the frame

@@ -105,7 +105,7 @@ enum FrameRenderer {
         position: LabelPosition
     ) -> CIImage {
         let labelImage = CIImage(cgImage: label)
-        let margin = (target.height * 0.055).rounded()
+        let margin = (target.height * labelMarginFraction).rounded()
         let x = ((target.width - labelImage.extent.width) / 2).rounded()
         let y: CGFloat = position == .bottom
             ? margin
@@ -113,6 +113,21 @@ enum FrameRenderer {
         return labelImage
             .transformed(by: CGAffineTransform(translationX: x, y: y))
             .composited(over: image)
+    }
+
+    static let labelMarginFraction: CGFloat = 0.055
+
+    /// The strip of picture the label sits on. Used to measure the contrast a
+    /// tinted label has to beat, so it stays the same rectangle the label
+    /// actually lands in.
+    static func labelBand(targetSize: CGSize, position: LabelPosition) -> CGRect {
+        let height = (targetSize.height * 0.16).rounded()
+        return CGRect(
+            x: 0,
+            y: position == .bottom ? 0 : targetSize.height - height,
+            width: targetSize.width,
+            height: height
+        )
     }
 
     // MARK: - Orientation
@@ -163,28 +178,72 @@ enum FrameRenderer {
 
 // MARK: - Labels
 
-/// Draws the VORHER / NACHHER pills. AppKit drawing is confined to the main
+/// Draws the VORHER / NACHHER labels. AppKit drawing is confined to the main
 /// actor and the results are handed to the exporter as immutable images.
 @MainActor
 enum LabelRenderer {
-    static func pill(text: String, targetSize: CGSize) -> CGImage? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, targetSize.width > 0, targetSize.height > 0 else { return nil }
+    /// Bold plain type with no plate, coloured from the picture underneath.
+    static func tinted(
+        text: String,
+        targetSize: CGSize,
+        tint: LabelTint,
+        shadow: Bool
+    ) -> CGImage? {
+        let fontSize = max(20, (targetSize.height * 0.038).rounded())
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: fontSize, weight: .bold),
+            .foregroundColor: NSColor(
+                srgbRed: tint.red,
+                green: tint.green,
+                blue: tint.blue,
+                alpha: 1
+            ),
+            .kern: fontSize * 0.06
+        ]
+        if shadow {
+            let dropShadow = NSShadow()
+            // Soft and centred, so it reads as weight rather than as a plate.
+            dropShadow.shadowColor = NSColor(calibratedWhite: 0, alpha: 0.55)
+            dropShadow.shadowBlurRadius = fontSize * 0.3
+            dropShadow.shadowOffset = .zero
+            attributes[.shadow] = dropShadow
+        }
+        // Room for the blur to fall off without being clipped.
+        let padding = (fontSize * (shadow ? 0.6 : 0.18)).rounded()
+        return draw(text: text, attributes: attributes, padding: padding, background: nil)
+    }
 
+    /// White type on a translucent pill — the safe option on any footage.
+    static func pill(text: String, targetSize: CGSize) -> CGImage? {
         let fontSize = max(18, (targetSize.height * 0.032).rounded())
-        let font = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: font,
+            .font: NSFont.systemFont(ofSize: fontSize, weight: .semibold),
             .foregroundColor: NSColor.white,
             .kern: fontSize * 0.08
         ]
+        return draw(
+            text: text,
+            attributes: attributes,
+            padding: (fontSize * 0.6).rounded(),
+            background: NSColor(calibratedWhite: 0, alpha: 0.55)
+        )
+    }
+
+    private static func draw(
+        text: String,
+        attributes: [NSAttributedString.Key: Any],
+        padding: CGFloat,
+        background: NSColor?
+    ) -> CGImage? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
         let attributed = NSAttributedString(string: trimmed.uppercased(), attributes: attributes)
         let textSize = attributed.size()
-
-        let paddingX = (fontSize * 0.9).rounded()
-        let paddingY = (fontSize * 0.45).rounded()
+        // A pill needs more breathing room sideways than above and below.
+        let paddingX = background == nil ? padding : padding * 1.6
         let width = Int((textSize.width + paddingX * 2).rounded())
-        let height = Int((textSize.height + paddingY * 2).rounded())
+        let height = Int((textSize.height + padding * 2).rounded())
         guard width > 0, height > 0 else { return nil }
 
         guard let rep = NSBitmapImageRep(
@@ -204,13 +263,14 @@ enum LabelRenderer {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
 
-        let bounds = NSRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height))
-        let radius = min(bounds.height / 2, 24)
-        let pillPath = NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius)
-        NSColor(calibratedWhite: 0, alpha: 0.55).setFill()
-        pillPath.fill()
+        if let background {
+            let bounds = NSRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height))
+            let radius = min(bounds.height / 2, 24)
+            background.setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius).fill()
+        }
 
-        attributed.draw(at: NSPoint(x: paddingX, y: paddingY))
+        attributed.draw(at: NSPoint(x: paddingX, y: padding))
 
         NSGraphicsContext.restoreGraphicsState()
         return rep.cgImage

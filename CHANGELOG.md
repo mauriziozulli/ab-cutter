@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.0 — labels tinted from the picture
+
+- Burnt-in labels can now be bold plain type with no plate, coloured with the
+  dominant hue of the cropped frame, which gives every clip its own palette.
+  The old white-on-a-pill look is still selectable.
+- The hue is sampled from the *ungraded* frame, so the black-and-white before
+  half still carries a coloured label — that is the point of tinting.
+- Only the hue is borrowed. Lightness is forced away from the strip of picture
+  behind the text, and the result is checked as a WCAG contrast ratio, because
+  a colour taken from an image is by definition close to that image.
+- A soft shadow keeps plain type readable where no tint can win, over mid-tone
+  footage. It defaults to Auto: applied only when the measured contrast falls
+  short, and it can be forced off or on.
+- The framing preview now renders the labels too, so the colours can be judged
+  before exporting rather than after.
+
 ## 0.2.0 — house clip length
 
 - A house clip length that new clips are cut to, with 10 / 15 / 20 / 30 / 60 s

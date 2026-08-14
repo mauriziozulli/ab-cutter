@@ -144,6 +144,42 @@ enum FitMode: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// How the burnt-in before/after label is drawn.
+enum LabelStyle: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// Bold plain type, tinted with the dominant hue of the cropped frame.
+    case tinted
+    /// White type on a translucent pill — safe on any footage.
+    case pill
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .tinted: "Tinted from the frame"
+        case .pill: "White on a pill"
+        }
+    }
+}
+
+/// A drop shadow is the only thing that keeps plain type readable over
+/// mid-tone footage, so it can be left to the contrast measurement.
+enum LabelShadowMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// Only when the measured contrast against the frame is too low.
+    case auto
+    case off
+    case always
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .auto: "Auto"
+        case .off: "Off"
+        case .always: "Always"
+        }
+    }
+}
+
 enum LabelPosition: String, Codable, CaseIterable, Identifiable, Sendable {
     case top
     case bottom
@@ -222,6 +258,8 @@ struct ExportSettings: Codable, Hashable {
     var beforeLabel: String = "VORHER"
     var afterLabel: String = "NACHHER"
     var labelPosition: LabelPosition = .bottom
+    var labelStyle: LabelStyle = .tinted
+    var labelShadow: LabelShadowMode = .auto
     /// Length of the audio crossfade centred on the split, in milliseconds.
     var audioCrossfadeMilliseconds: Double = 40
     /// Manual bitrate override in Mbit/s. `nil` uses the automatic estimate.

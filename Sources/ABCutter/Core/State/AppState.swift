@@ -25,6 +25,7 @@ final class AppState: ObservableObject {
     private var projectURL: URL?
     private var waveformTasks: [UUID: Task<Void, Never>] = [:]
     private var reloadTask: Task<Void, Never>?
+    private var labelTask: Task<Void, Never>?
 
     var selectedClip: Clip? {
         guard let selectedClipID else { return nil }
@@ -341,6 +342,7 @@ final class AppState: ObservableObject {
         selectedClipID = clip.id
         player.seek(to: clip.start)
         player.apply(project: project, selectedClip: clip)
+        refreshPreviewLabels()
     }
 
     /// Sets the selected clip's in point to the playhead. With a fixed house
@@ -406,11 +408,42 @@ final class AppState: ObservableObject {
                 if Task.isCancelled { return }
             }
             await self?.player.reload(project: snapshot, selectedClip: clip)
+            self?.refreshPreviewLabels()
         }
     }
 
     func applyPlayerSettings() {
         player.apply(project: project, selectedClip: selectedClip)
+        refreshPreviewLabels()
+    }
+
+    /// Re-samples the burnt-in labels for the selected clip so the preview
+    /// shows the colours the export will use. Coalesced, because a tinted
+    /// label decodes two frames and the controls driving it are sliders.
+    func refreshPreviewLabels() {
+        labelTask?.cancel()
+
+        guard let format = player.previewFormat,
+              let clip = selectedClip,
+              project.export.showLabels
+        else {
+            guard player.previewBeforeLabel != nil || player.previewAfterLabel != nil else { return }
+            player.previewBeforeLabel = nil
+            player.previewAfterLabel = nil
+            player.apply(project: project, selectedClip: selectedClip)
+            return
+        }
+
+        let snapshot = project
+        labelTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            if Task.isCancelled { return }
+            let labels = await LabelFactory.labels(project: snapshot, clip: clip, format: format)
+            guard let self, !Task.isCancelled else { return }
+            self.player.previewBeforeLabel = labels.before
+            self.player.previewAfterLabel = labels.after
+            self.player.apply(project: self.project, selectedClip: self.selectedClip)
+        }
     }
 
     // MARK: - Waveforms

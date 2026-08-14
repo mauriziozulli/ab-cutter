@@ -99,24 +99,12 @@ final class ExportQueue: ObservableObject {
         summary = nil
         isRunning = true
 
-        // Labels are AppKit-drawn, so they are made here on the main actor and
-        // handed to the exporter as finished images.
-        var labelCache: [SocialFormat: (before: CGImage?, after: CGImage?)] = [:]
-        if project.export.showLabels {
-            for format in formats {
-                labelCache[format] = (
-                    LabelRenderer.pill(text: project.export.beforeLabel, targetSize: format.size),
-                    LabelRenderer.pill(text: project.export.afterLabel, targetSize: format.size)
-                )
-            }
-        }
-
         task = Task { [weak self] in
-            await self?.run(project: project, labelCache: labelCache)
+            await self?.run(project: project)
         }
     }
 
-    private func run(project: ABProject, labelCache: [SocialFormat: (before: CGImage?, after: CGImage?)]) async {
+    private func run(project: ABProject) async {
         defer {
             isRunning = false
             task = nil
@@ -134,14 +122,21 @@ final class ExportQueue: ObservableObject {
             }
 
             jobs[index].state = .running(0)
-            let labels = labelCache[jobs[index].format]
+
+            // Labels are built per clip and format: a tinted one has to read
+            // the picture it will sit on, which differs with every crop.
+            let labels = await LabelFactory.labels(
+                project: project,
+                clip: clip,
+                format: jobs[index].format
+            )
             let request = ExportRequest(
                 clip: clip,
                 format: jobs[index].format,
                 settings: project.export,
                 outputURL: jobs[index].outputURL,
-                beforeLabel: labels?.before,
-                afterLabel: labels?.after
+                beforeLabel: labels.before,
+                afterLabel: labels.after
             )
 
             do {

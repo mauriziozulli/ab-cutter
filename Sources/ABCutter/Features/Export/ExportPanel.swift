@@ -52,6 +52,18 @@ struct ExportPanel: View {
         .abSection("Output formats")
     }
 
+    /// Writes an export setting and re-applies it to the preview, so the look
+    /// controls and the burnt-in labels stay in step with what will be encoded.
+    private func exportBinding<Value>(_ keyPath: WritableKeyPath<ExportSettings, Value>) -> Binding<Value> {
+        Binding(
+            get: { state.project.export[keyPath: keyPath] },
+            set: {
+                state.project.export[keyPath: keyPath] = $0
+                state.applyPlayerSettings()
+            }
+        )
+    }
+
     private func formatBinding(_ format: SocialFormat) -> Binding<Bool> {
         Binding(
             get: { state.project.export.formats.contains(format) },
@@ -98,24 +110,48 @@ struct ExportPanel: View {
             }
             .controlSize(.small)
 
-            Toggle("Burn in labels", isOn: $state.project.export.showLabels)
+            Toggle("Burn in labels", isOn: exportBinding(\.showLabels))
                 .toggleStyle(.checkbox)
 
             if state.project.export.showLabels {
                 HStack(spacing: 6) {
-                    TextField("Before", text: $state.project.export.beforeLabel)
+                    TextField("Before", text: exportBinding(\.beforeLabel))
                         .textFieldStyle(.roundedBorder)
                         .controlSize(.small)
-                    TextField("After", text: $state.project.export.afterLabel)
+                    TextField("After", text: exportBinding(\.afterLabel))
                         .textFieldStyle(.roundedBorder)
                         .controlSize(.small)
                 }
-                Picker("Position", selection: $state.project.export.labelPosition) {
+                Picker("Style", selection: exportBinding(\.labelStyle)) {
+                    ForEach(LabelStyle.allCases) { style in
+                        Text(style.title).tag(style)
+                    }
+                }
+                .controlSize(.small)
+
+                if state.project.export.labelStyle == .tinted {
+                    Picker("Shadow", selection: exportBinding(\.labelShadow)) {
+                        ForEach(LabelShadowMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .controlSize(.small)
+                    .help("Auto adds a soft shadow only where the tint would not read against the picture")
+                }
+
+                Picker("Position", selection: exportBinding(\.labelPosition)) {
                     ForEach(LabelPosition.allCases) { position in
                         Text(position.title).tag(position)
                     }
                 }
                 .controlSize(.small)
+
+                if state.project.export.labelStyle == .tinted {
+                    Text("The tint is read from the colour frame, so the black-and-white half keeps a coloured label.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             HStack(spacing: 6) {
