@@ -246,6 +246,11 @@ struct ABProject: Codable {
     var dropFrame: Bool = false
     var audioSources: [AudioSource] = []
     var clips: [Clip] = []
+    /// House length for a social cut. New clips are created at this length.
+    var defaultClipLengthSeconds: Double = 20
+    /// When set, in and out points slide a fixed-length window instead of
+    /// trimming one edge, so every clip stays exactly the house length.
+    var keepClipLengthFixed: Bool = true
     /// Default "before" audio when a clip does not override it.
     var defaultBeforeSourceID: UUID?
     /// Default "after" audio when a clip does not override it.

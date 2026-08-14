@@ -226,12 +226,20 @@ struct PlayerPane: View {
 
             Button("Mark in") { state.markIn() }
                 .disabled(clip == nil)
+                .help(state.project.keepClipLengthFixed
+                      ? "Start the fixed-length window here"
+                      : "Trim the head to the playhead")
             Button("Mark out") { state.markOut() }
                 .disabled(clip == nil)
+                .help(state.project.keepClipLengthFixed
+                      ? "End the fixed-length window here"
+                      : "Trim the tail to the playhead")
             Button("Split here") { state.setSplitToPlayhead() }
                 .disabled(clip == nil)
             Button("New clip") { state.addClipAtPlayhead() }
                 .disabled(!state.project.hasVideo)
+                .keyboardShortcut("n", modifiers: .command)
+                .help("Drop a \(String(format: "%g", state.project.defaultClipLengthSeconds)) s clip at the playhead (⌘N)")
         }
         .buttonStyle(.bordered)
         .controlSize(.small)

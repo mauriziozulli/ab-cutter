@@ -25,11 +25,23 @@ split exactly as the export will: before-source until the switch, after-source
 after it. It can also render the real 4:5 or 9:16 crop and the black & white
 grade while you scrub, so the framing is decided before anything is encoded.
 
-**Cut and batch-export.** Mark clips with in/out points. The A/B switch
-defaults to the exact middle of each clip and can be moved anywhere. Then
-export every enabled clip into every selected format in one run — 4:5, 9:16,
-1:1 and 16:9 are all available, and a clip × format matrix is encoded
-sequentially with per-file progress.
+**Cut to a house length.** Set the length once — 10, 15, 20, 30, 60 seconds
+or anything you type — and every new clip is that long. With the length locked,
+marking in and out slides a fixed window rather than trimming an edge, so
+clipping a film down to a dozen excerpts is scrub, ⌘N, scrub, ⌘N. Existing
+clips can be snapped to the house length in one go, and the A/B switch keeps
+its relative position so a re-length never moves the reveal.
+
+Social platforms publish upper limits rather than fixed durations, and those
+limits move: Stories cards are cut into segments past their ceiling, Reels run
+into the minutes. The app therefore holds *your* length rather than
+hard-coding anyone's, which is also what keeps a set of before/after cuts
+looking like a series.
+
+**Batch-export.** The A/B switch defaults to the exact middle of each clip and
+can be moved anywhere. Export every enabled clip into every selected format in
+one run — 4:5, 9:16, 1:1 and 16:9 are all available, and the clip × format
+matrix is encoded sequentially with per-file progress.
 
 ## Requirements
 

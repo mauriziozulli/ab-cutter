@@ -8,6 +8,7 @@ struct ClipsPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            ClipLengthCard(state: state)
             clipList
             if let clip = state.selectedClip {
                 ClipInspector(state: state, clip: clip)
@@ -31,9 +32,11 @@ struct ClipsPanel: View {
                     .foregroundStyle(.secondary)
             }
 
-            Button("Add clip at playhead") { state.addClipAtPlayhead() }
-                .controlSize(.small)
-                .disabled(!state.project.hasVideo)
+            Button("Add \(String(format: "%g", state.project.defaultClipLengthSeconds)) s clip at playhead") {
+                state.addClipAtPlayhead()
+            }
+            .controlSize(.small)
+            .disabled(!state.project.hasVideo)
         }
         .abSection("Clips")
     }
@@ -82,6 +85,91 @@ struct ClipsPanel: View {
     }
 }
 
+/// The house length every new clip is cut to. Social platforms publish upper
+/// limits rather than fixed durations — and move them often — so the app keeps
+/// a length *you* choose instead of hard-coding anyone's ceiling.
+@MainActor
+struct ClipLengthCard: View {
+    @ObservedObject var state: AppState
+
+    /// Lengths a before/after cut actually tends to want.
+    private let presets: [Double] = [10, 15, 20, 30, 60]
+
+    @State private var lengthText = ""
+    @State private var isEditingLength = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
+                ForEach(presets, id: \.self) { preset in
+                    Button("\(Int(preset))s") {
+                        state.setDefaultClipLength(preset)
+                        isEditingLength = false
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(isActive(preset) ? Theme.clipTint : nil)
+                }
+
+                TextField("", text: lengthBinding)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(width: 54)
+                    .multilineTextAlignment(.center)
+                    .onSubmit { isEditingLength = false }
+                    .help("Custom length in seconds")
+            }
+
+            Toggle("Keep every clip this length", isOn: Binding(
+                get: { state.project.keepClipLengthFixed },
+                set: { state.project.keepClipLengthFixed = $0 }
+            ))
+            .toggleStyle(.checkbox)
+            .font(.caption)
+            .help("In and out points slide a fixed window instead of trimming one edge")
+
+            HStack(spacing: 6) {
+                Button("Apply to all clips") { state.applyDefaultLengthToAllClips() }
+                    .controlSize(.small)
+                    .disabled(state.project.clips.isEmpty)
+                Spacer()
+                Text(splitNote)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .abCard()
+        .abSection("Clip length")
+    }
+
+    private func isActive(_ preset: Double) -> Bool {
+        abs(state.project.defaultClipLengthSeconds - preset) < 0.01
+    }
+
+    private var splitNote: String {
+        let half = state.project.defaultClipLengthSeconds / 2
+        return "A/B switch at \(String(format: "%.1f", half)) s"
+    }
+
+    private var lengthBinding: Binding<String> {
+        Binding(
+            get: {
+                isEditingLength
+                    ? lengthText
+                    : String(format: "%g", state.project.defaultClipLengthSeconds)
+            },
+            set: { newValue in
+                isEditingLength = true
+                lengthText = newValue
+                if let parsed = Double(newValue.replacingOccurrences(of: ",", with: ".")), parsed > 0 {
+                    state.setDefaultClipLength(parsed)
+                }
+            }
+        )
+    }
+}
+
 /// Everything about one clip that the export reads.
 @MainActor
 struct ClipInspector: View {
@@ -123,6 +211,7 @@ struct ClipInspector: View {
                 onMark: { state.markOut() }
             )
 
+            lengthRow
             splitRow
 
             Divider()
@@ -171,7 +260,7 @@ struct ClipInspector: View {
         HStack(spacing: 6) {
             Text(label)
                 .font(.caption)
-                .frame(width: 34, alignment: .leading)
+                .frame(width: 46, alignment: .leading)
             Text(Timecode.string(
                 fromSeconds: seconds,
                 rate: state.project.frameRate,
@@ -193,12 +282,35 @@ struct ClipInspector: View {
         .buttonStyle(.bordered)
     }
 
+    private var lengthRow: some View {
+        HStack(spacing: 6) {
+            Text("Length")
+                .font(.caption)
+                .frame(width: 46, alignment: .leading)
+            Text(String(format: "%.2f s", clip.duration))
+                .timecodeStyle(size: 11)
+            if state.project.keepClipLengthFixed {
+                Image(systemName: "lock.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .help("In and out slide a fixed window — change the house length above")
+            }
+            Spacer()
+            Button("House") {
+                state.setLength(state.project.defaultClipLengthSeconds, for: clip)
+            }
+            .controlSize(.mini)
+            .help("Snap this clip to the house length")
+        }
+        .buttonStyle(.bordered)
+    }
+
     private var splitRow: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Text("Split")
                     .font(.caption)
-                    .frame(width: 34, alignment: .leading)
+                    .frame(width: 46, alignment: .leading)
                 Text(Timecode.string(
                     fromSeconds: clip.splitTime,
                     rate: state.project.frameRate,

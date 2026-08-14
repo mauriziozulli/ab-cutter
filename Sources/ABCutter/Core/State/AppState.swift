@@ -82,7 +82,10 @@ final class AppState: ObservableObject {
             fresh.videoNaturalHeight = probe.naturalSize.height
             fresh.videoTimecodeStartSeconds = probe.timecode?.seconds
             fresh.frameRate = FrameRate.closest(to: probe.nominalFrameRate)
+            // Loading a new film keeps the delivery preferences you already set.
             fresh.export = project.export
+            fresh.defaultClipLengthSeconds = project.defaultClipLengthSeconds
+            fresh.keepClipLengthFixed = project.keepClipLengthFixed
 
             if probe.hasAudio {
                 var embedded = AudioSource(
@@ -259,27 +262,64 @@ final class AppState: ObservableObject {
 
     // MARK: - Clips
 
+    /// Fits a window of `length` starting at `start` inside the film. The
+    /// length is preserved by sliding the window back from the end rather than
+    /// truncating it; only a film shorter than the house length is cut short.
+    private func fittedRange(start: Double, length: Double) -> (start: Double, end: Double) {
+        let limit = project.videoDurationSeconds
+        guard limit > 0 else { return (0, 0) }
+        let clamped = min(max(length, project.frameDuration), limit)
+        var begin = max(start, 0)
+        if begin + clamped > limit { begin = limit - clamped }
+        return (begin, begin + clamped)
+    }
+
+    /// Moves a clip to a new window while keeping the A/B switch at the same
+    /// point proportionally, so a re-length never moves the reveal.
+    private func reshaped(_ clip: Clip, start: Double, length: Double) -> Clip {
+        var updated = clip
+        let fraction = clip.splitFraction
+        let range = fittedRange(start: start, length: length)
+        updated.start = range.start
+        updated.end = range.end
+        if updated.splitOverride != nil {
+            updated.splitOverride = range.start + fraction * (range.end - range.start)
+        }
+        return updated
+    }
+
     func addDefaultClip() {
-        let duration = project.videoDurationSeconds
-        guard duration > 0 else { return }
-        let length = min(20, duration)
-        let start = max(0, min(player.currentTime, duration - length))
-        addClip(start: start, end: start + length)
+        addClipAtPlayhead()
     }
 
-    func addClipAtPlayhead(length: Double = 20) {
-        let duration = project.videoDurationSeconds
-        guard duration > 0 else { return }
-        let start = min(player.currentTime, max(duration - 1, 0))
-        addClip(start: start, end: min(start + length, duration))
-    }
-
-    private func addClip(start: Double, end: Double) {
-        let index = project.clips.count + 1
-        let clip = Clip(name: "Clip \(index)", start: start, end: end)
+    func addClipAtPlayhead() {
+        guard project.videoDurationSeconds > 0 else { return }
+        let range = fittedRange(start: player.currentTime, length: project.defaultClipLengthSeconds)
+        let clip = Clip(name: "Clip \(project.clips.count + 1)", start: range.start, end: range.end)
         project.clips.append(clip)
         selectedClipID = clip.id
         player.apply(project: project, selectedClip: clip)
+    }
+
+    /// Snaps every clip to the house length, anchored on its existing in point.
+    func applyDefaultLengthToAllClips() {
+        guard !project.clips.isEmpty else { return }
+        let length = project.defaultClipLengthSeconds
+        for index in project.clips.indices {
+            project.clips[index] = reshaped(project.clips[index], start: project.clips[index].start, length: length)
+        }
+        status = "Set \(project.clips.count) clip\(project.clips.count == 1 ? "" : "s") to \(formattedLength(length))."
+        player.apply(project: project, selectedClip: selectedClip)
+    }
+
+    func setDefaultClipLength(_ seconds: Double) {
+        project.defaultClipLengthSeconds = max(seconds, project.frameDuration)
+    }
+
+    private func formattedLength(_ seconds: Double) -> String {
+        seconds == seconds.rounded()
+            ? "\(Int(seconds)) s"
+            : String(format: "%.1f s", seconds)
     }
 
     func removeClip(_ clip: Clip) {
@@ -303,17 +343,41 @@ final class AppState: ObservableObject {
         player.apply(project: project, selectedClip: clip)
     }
 
-    /// Sets the selected clip's in or out point to the playhead.
+    /// Sets the selected clip's in point to the playhead. With a fixed house
+    /// length the whole window slides instead of the head being trimmed.
     func markIn() {
         guard var clip = selectedClip else { return }
-        clip.start = min(player.currentTime, clip.end - project.frameDuration)
+        if project.keepClipLengthFixed {
+            clip = reshaped(clip, start: player.currentTime, length: project.defaultClipLengthSeconds)
+        } else {
+            clip.start = min(player.currentTime, clip.end - project.frameDuration)
+        }
         updateClip(clip)
     }
 
+    /// Sets the out point to the playhead — with a fixed length, the window
+    /// ends here and its head follows.
     func markOut() {
         guard var clip = selectedClip else { return }
-        clip.end = max(player.currentTime, clip.start + project.frameDuration)
+        if project.keepClipLengthFixed {
+            let length = project.defaultClipLengthSeconds
+            clip = reshaped(clip, start: player.currentTime - length, length: length)
+        } else {
+            clip.end = max(player.currentTime, clip.start + project.frameDuration)
+        }
         updateClip(clip)
+    }
+
+    /// Slides the selected clip so it begins at `start`, keeping its length.
+    func moveSelectedClip(toStart start: Double) {
+        guard let clip = selectedClip else { return }
+        let length = project.keepClipLengthFixed ? project.defaultClipLengthSeconds : clip.duration
+        updateClip(reshaped(clip, start: start, length: length))
+    }
+
+    /// Changes one clip's own length, anchored on its in point.
+    func setLength(_ length: Double, for clip: Clip) {
+        updateClip(reshaped(clip, start: clip.start, length: length))
     }
 
     func setSplitToPlayhead() {
