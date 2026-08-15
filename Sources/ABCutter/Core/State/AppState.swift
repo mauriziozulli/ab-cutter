@@ -286,7 +286,6 @@ final class AppState: ObservableObject {
     /// point proportionally, so a re-length never moves the reveal.
     private func reshaped(_ clip: Clip, start: Double, length: Double) -> Clip {
         var updated = clip
-        let fraction = clip.splitFraction
         let range = fittedRange(start: start, length: length)
         updated.start = range.start
         updated.end = range.end
@@ -298,7 +297,6 @@ final class AppState: ObservableObject {
                 range.start + (($0 - clip.start) / oldSpan) * (range.end - range.start)
             }
         }
-        _ = fraction
         return updated
     }
 

@@ -145,10 +145,17 @@ struct Clip: Identifiable, Codable, Hashable {
         switchPoints = []
     }
 
-    /// Legacy projects stored a single optional `splitOverride`.
     private enum CodingKeys: String, CodingKey {
-        case id, name, start, end, switchPoints, splitOverride
+        case id, name, start, end, switchPoints
         case beforeSourceID, afterSourceID, panX, panY, isEnabled
+    }
+
+    /// Projects written before the switches became a list stored a single
+    /// optional `splitOverride`. It lives in its own key set so that every
+    /// `CodingKeys` case still maps to a stored property — otherwise Swift
+    /// cannot synthesise `encode(to:)`.
+    private enum LegacyCodingKeys: String, CodingKey {
+        case splitOverride
     }
 
     init(
@@ -183,8 +190,10 @@ struct Clip: Identifiable, Codable, Hashable {
         end = try container.decode(Double.self, forKey: .end)
         if let points = try container.decodeIfPresent([Double].self, forKey: .switchPoints) {
             switchPoints = points
-        } else if let legacy = try container.decodeIfPresent(Double.self, forKey: .splitOverride) {
-            switchPoints = [legacy]
+        } else if let legacy = try? decoder.container(keyedBy: LegacyCodingKeys.self),
+                  let split = try? legacy.decodeIfPresent(Double.self, forKey: .splitOverride),
+                  let split {
+            switchPoints = [split]
         } else {
             switchPoints = []
         }
@@ -559,8 +568,11 @@ struct ABProject: Codable {
         for index in clips.indices {
             clips[index].start = min(max(clips[index].start, 0), limit)
             clips[index].end = min(max(clips[index].end, clips[index].start), limit)
-            if let override = clips[index].splitOverride {
-                clips[index].splitOverride = min(max(override, clips[index].start), clips[index].end)
+            if !clips[index].switchPoints.isEmpty {
+                let lower = clips[index].start
+                let upper = clips[index].end
+                clips[index].switchPoints = clips[index].switchPoints
+                    .map { min(max($0, lower), upper) }
             }
         }
     }
