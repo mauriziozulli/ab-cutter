@@ -28,6 +28,16 @@ switch, which reads instantly on a phone and mirrors what the sound is doing.
 Black and white remains available, along with muted colour and a plain full
 bleed.
 
+**Stay clear of the story chrome.** A 9:16 clip plays full screen with the
+account name over the top of it and the reply field over the bottom, so a
+frame drawn towards the canvas edge disappears underneath them. The app
+reserves a strip at each end of a 9:16 canvas — 10 % and 6 % by default,
+adjustable — and lays the frame, its border and the burnt-in type out inside
+what is left. A full-bleed picture still fills the canvas: the chrome may sit
+over the film, it just must not sit over the furniture. Feed formats have no
+chrome over the picture and are untouched. In the 9:16 preview two dashed
+rules mark the strips; they never reach a file.
+
 **Monitor the A/B.** The preview can solo any single layer, or follow the
 split exactly as the export will: before-source until the switch, after-source
 after it. It can also render the real 4:5 or 9:16 crop, the frame and the

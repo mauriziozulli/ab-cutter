@@ -18,20 +18,26 @@ struct ClipOverlays {
 /// ask the same way and always get the same result.
 @MainActor
 enum LabelFactory {
+    /// `guides` marks the reserved strips with a dashed rule. The preview asks
+    /// for it so the safe area can be judged against the picture; the export
+    /// never does.
     static func overlays(
         project: ABProject,
         clip: Clip,
-        format: SocialFormat
+        format: SocialFormat,
+        guides: Bool = false
     ) async -> ClipOverlays {
         let settings = project.export
         let showsBorder = settings.showFrameBorder
         let hasText = settings.showLabels
+        let safeArea = settings.safeArea(for: format)
+        let showsGuides = guides && !safeArea.isEmpty
 
         // Nothing to draw at all when the labels are off and the picture is
         // full bleed on both sides.
         let insetsAnything = settings.frameTreatment.isInset(before: true)
             || settings.frameTreatment.isInset(before: false)
-        guard hasText || (showsBorder && insetsAnything) else { return .empty }
+        guard hasText || showsGuides || (showsBorder && insetsAnything) else { return .empty }
 
         let tints = await self.tints(project: project, clip: clip, format: format)
 
@@ -43,7 +49,8 @@ enum LabelFactory {
                     treatment: settings.frameTreatment,
                     isBefore: isBefore,
                     insetScale: settings.insetScale,
-                    labelPosition: settings.labelPosition
+                    labelPosition: settings.labelPosition,
+                    safeArea: safeArea
                 ),
                 showBorder: showsBorder,
                 tint: tint,
@@ -51,7 +58,9 @@ enum LabelFactory {
                 subtitle: hasText ? settings.subtitleText : "",
                 style: settings.labelStyle,
                 position: settings.labelPosition,
-                shadow: wantsShadow(tint, mode: settings.labelShadow, style: settings.labelStyle)
+                shadow: wantsShadow(tint, mode: settings.labelShadow, style: settings.labelStyle),
+                safeArea: safeArea,
+                guides: showsGuides
             )
         }
 

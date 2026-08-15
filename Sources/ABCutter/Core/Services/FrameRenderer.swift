@@ -21,6 +21,8 @@ struct RenderPlan {
     var frameBackdrop: FrameBackdrop
     var insetScale: Double
     var labelPosition: LabelPosition
+    /// Strips the composition keeps clear of the platform's own controls.
+    var safeArea: SafeArea = .none
     /// Full-canvas furniture — border, label, subtitle — drawn ahead of time.
     var beforeOverlay: CGImage?
     var afterOverlay: CGImage?
@@ -46,7 +48,8 @@ enum FrameRenderer {
             treatment: plan.frameTreatment,
             isBefore: isBefore,
             insetScale: plan.insetScale,
-            labelPosition: plan.labelPosition
+            labelPosition: plan.labelPosition,
+            safeArea: plan.safeArea
         )
 
         let picture = applyLook(
@@ -86,6 +89,27 @@ enum FrameRenderer {
 
     static let labelMarginFraction: CGFloat = 0.055
 
+    /// The canvas minus the strips reserved for the platform's own controls.
+    /// Everything the app draws itself — inset picture, border, type — is laid
+    /// out inside this rect, while a full-bleed picture still fills the canvas:
+    /// a story's header may sit over the film, it just must not sit over the
+    /// frame or the label.
+    ///
+    /// With no safe area this is the whole canvas, so the layout is unchanged
+    /// for every format that plays inside a feed card.
+    static func contentRect(targetSize: CGSize, safeArea: SafeArea) -> CGRect {
+        let full = CGRect(origin: .zero, size: targetSize)
+        let area = safeArea.clamped
+        guard !area.isEmpty else { return full }
+
+        let top = (targetSize.height * CGFloat(area.top)).rounded()
+        let bottom = (targetSize.height * CGFloat(area.bottom)).rounded()
+        let height = targetSize.height - top - bottom
+        guard height > 1 else { return full }
+
+        return CGRect(x: 0, y: bottom, width: targetSize.width, height: height)
+    }
+
     /// Where the picture itself sits inside the canvas. An inset picture is
     /// pushed away from the label side, so the type gets a band of its own
     /// rather than sitting on the image.
@@ -94,18 +118,23 @@ enum FrameRenderer {
         treatment: FrameTreatment,
         isBefore: Bool,
         insetScale: Double,
-        labelPosition: LabelPosition
+        labelPosition: LabelPosition,
+        safeArea: SafeArea = .none
     ) -> CGRect {
         let full = CGRect(origin: .zero, size: targetSize)
         guard treatment.isInset(before: isBefore) else { return full }
 
+        // Scaled against the safe height rather than the canvas height, so the
+        // reserved strips take their room out of the picture instead of being
+        // eaten by it. The width is untouched: no platform draws down the side.
+        let content = contentRect(targetSize: targetSize, safeArea: safeArea)
         let scale = CGFloat(min(max(insetScale, 0.6), 0.98))
         let width = (targetSize.width * scale).rounded()
-        let height = (targetSize.height * scale).rounded()
+        let height = (content.height * scale).rounded()
         let freeX = targetSize.width - width
-        let freeY = targetSize.height - height
+        let freeY = content.height - height
         // Roughly three-quarters of the slack goes to the label side.
-        let bottom = (labelPosition == .bottom ? freeY * 0.72 : freeY * 0.28).rounded()
+        let bottom = content.minY + (labelPosition == .bottom ? freeY * 0.72 : freeY * 0.28).rounded()
 
         return CGRect(x: (freeX / 2).rounded(), y: bottom, width: width, height: height)
     }
@@ -115,23 +144,30 @@ enum FrameRenderer {
     static func labelBand(
         targetSize: CGSize,
         pictureRect: CGRect,
-        position: LabelPosition
+        position: LabelPosition,
+        safeArea: SafeArea = .none
     ) -> CGRect {
+        let content = contentRect(targetSize: targetSize, safeArea: safeArea)
         let isInset = pictureRect != CGRect(origin: .zero, size: targetSize)
         if isInset {
             return position == .bottom
-                ? CGRect(x: 0, y: 0, width: targetSize.width, height: pictureRect.minY)
+                ? CGRect(
+                    x: 0,
+                    y: content.minY,
+                    width: targetSize.width,
+                    height: max(pictureRect.minY - content.minY, 0)
+                )
                 : CGRect(
                     x: 0,
                     y: pictureRect.maxY,
                     width: targetSize.width,
-                    height: targetSize.height - pictureRect.maxY
+                    height: max(content.maxY - pictureRect.maxY, 0)
                 )
         }
-        let height = (targetSize.height * 0.16).rounded()
+        let height = min((targetSize.height * 0.16).rounded(), content.height)
         return CGRect(
             x: 0,
-            y: position == .bottom ? 0 : targetSize.height - height,
+            y: position == .bottom ? content.minY : content.maxY - height,
             width: targetSize.width,
             height: height
         )

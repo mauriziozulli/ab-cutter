@@ -19,7 +19,9 @@ enum OverlayRenderer {
         subtitle: String,
         style: LabelStyle,
         position: LabelPosition,
-        shadow: Bool
+        shadow: Bool,
+        safeArea: SafeArea = .none,
+        guides: Bool = false
     ) -> CGImage? {
         let width = Int(targetSize.width.rounded())
         let height = Int(targetSize.height.rounded())
@@ -29,7 +31,8 @@ enum OverlayRenderer {
         let drawsBorder = showBorder && isInset
         let heading = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let caption = subtitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard drawsBorder || !heading.isEmpty || !caption.isEmpty else { return nil }
+        let drawsGuides = guides && !safeArea.clamped.isEmpty
+        guard drawsBorder || drawsGuides || !heading.isEmpty || !caption.isEmpty else { return nil }
 
         guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil,
@@ -67,11 +70,33 @@ enum OverlayRenderer {
             colour: colour,
             style: style,
             position: position,
-            shadow: shadow
+            shadow: shadow,
+            safeArea: safeArea
         )
+
+        if drawsGuides { drawGuides(targetSize: targetSize, safeArea: safeArea) }
 
         NSGraphicsContext.restoreGraphicsState()
         return rep.cgImage
+    }
+
+    /// Two dashed rules showing where the story player's own controls land.
+    /// The preview asks for these; the exporter never does, so they cannot
+    /// reach a delivered file.
+    private static func drawGuides(targetSize: CGSize, safeArea: SafeArea) {
+        let content = FrameRenderer.contentRect(targetSize: targetSize, safeArea: safeArea)
+        let lineWidth = max(1.5, (targetSize.height * 0.0018).rounded())
+        var dash: [CGFloat] = [lineWidth * 6, lineWidth * 5]
+        NSColor(calibratedRed: 1, green: 0.82, blue: 0.2, alpha: 0.5).setStroke()
+
+        for edge in [content.minY, content.maxY] where edge > 0.5 && edge < targetSize.height - 0.5 {
+            let path = NSBezierPath()
+            path.lineWidth = lineWidth
+            path.setLineDash(&dash, count: dash.count, phase: 0)
+            path.move(to: NSPoint(x: 0, y: edge))
+            path.line(to: NSPoint(x: targetSize.width, y: edge))
+            path.stroke()
+        }
     }
 
     /// The type for a title card: a large wrapping headline with an optional
@@ -83,7 +108,8 @@ enum OverlayRenderer {
         subline: String,
         tint: LabelTint,
         position: StillTextPosition,
-        shadow: Bool
+        shadow: Bool,
+        safeArea: SafeArea = .none
     ) -> CGImage? {
         let width = Int(targetSize.width.rounded())
         let height = Int(targetSize.height.rounded())
@@ -148,12 +174,13 @@ enum OverlayRenderer {
         let captionHeight = captionText?.boundingRect(with: bounds, options: options).height.rounded(.up) ?? 0
         let blockHeight = titleHeight + (titleText != nil && captionText != nil ? gap : 0) + captionHeight
 
+        let content = FrameRenderer.contentRect(targetSize: targetSize, safeArea: safeArea)
         let edge = (targetSize.height * 0.085).rounded()
         let blockTop: CGFloat
         switch position {
-        case .top: blockTop = targetSize.height - edge
+        case .top: blockTop = content.maxY - edge
         case .centre: blockTop = (targetSize.height + blockHeight) / 2
-        case .bottom: blockTop = edge + blockHeight
+        case .bottom: blockTop = content.minY + edge + blockHeight
         }
 
         // `usesLineFragmentOrigin` flows text downward from the top of the rect.
@@ -184,7 +211,8 @@ enum OverlayRenderer {
         colour: NSColor,
         style: LabelStyle,
         position: LabelPosition,
-        shadow: Bool
+        shadow: Bool,
+        safeArea: SafeArea
     ) {
         guard !heading.isEmpty || !caption.isEmpty else { return }
 
@@ -230,14 +258,22 @@ enum OverlayRenderer {
         let band = FrameRenderer.labelBand(
             targetSize: targetSize,
             pictureRect: pictureRect,
-            position: position
+            position: position,
+            safeArea: safeArea
         )
+        let content = FrameRenderer.contentRect(targetSize: targetSize, safeArea: safeArea)
         let minimumMargin = (targetSize.height * FrameRenderer.labelMarginFraction * 0.6).rounded()
 
-        // Centre the block in its band, then keep it clear of the canvas edge.
+        // Centre the block in its band, then keep it clear of the safe edge.
+        // Where the band is too shallow to hold the type with its margins the
+        // bounds would cross over, so it is simply centred instead of being
+        // pushed out of the picture by whichever clamp ran last.
         var blockBottom = band.midY - blockHeight / 2
-        blockBottom = max(blockBottom, minimumMargin)
-        blockBottom = min(blockBottom, targetSize.height - minimumMargin - blockHeight)
+        let lowest = content.minY + minimumMargin
+        let highest = content.maxY - minimumMargin - blockHeight
+        blockBottom = highest >= lowest
+            ? min(max(blockBottom, lowest), highest)
+            : content.midY - blockHeight / 2
 
         if style == .pill {
             let padX = (titleSize * 0.9).rounded()

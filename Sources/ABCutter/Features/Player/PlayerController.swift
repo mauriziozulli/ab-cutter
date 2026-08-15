@@ -213,6 +213,7 @@ final class PlayerController: ObservableObject {
             frameBackdrop: project.export.frameBackdrop,
             insetScale: project.export.insetScale,
             labelPosition: project.export.labelPosition,
+            safeArea: project.export.safeArea(for: previewFormat),
             beforeOverlay: previewOverlays.before,
             afterOverlay: previewOverlays.after,
             sourceNaturalSize: timeline.videoNaturalSize,

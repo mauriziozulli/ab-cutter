@@ -46,6 +46,7 @@ enum PaletteSampler {
         // and a tint read off a monochrome frame would come back grey.
         let aspect = format.size.height / format.size.width
         let proxy = CGSize(width: 200, height: (200 * aspect).rounded())
+        let safeArea = settings.safeArea(for: format)
         let plan = RenderPlan(
             targetSize: proxy,
             fitMode: settings.fitMode,
@@ -58,6 +59,7 @@ enum PaletteSampler {
             frameBackdrop: settings.frameBackdrop,
             insetScale: settings.insetScale,
             labelPosition: settings.labelPosition,
+            safeArea: safeArea,
             beforeOverlay: nil,
             afterOverlay: nil,
             // The generator already applied the track transform.
@@ -76,7 +78,8 @@ enum PaletteSampler {
             treatment: settings.frameTreatment,
             isBefore: isBefore,
             insetScale: settings.insetScale,
-            labelPosition: settings.labelPosition
+            labelPosition: settings.labelPosition,
+            safeArea: safeArea
         )
 
         // The hue comes from the picture itself, the contrast from whatever the
@@ -87,7 +90,8 @@ enum PaletteSampler {
             bandRect: FrameRenderer.labelBand(
                 targetSize: proxy,
                 pictureRect: pictureRect,
-                position: settings.labelPosition
+                position: settings.labelPosition,
+                safeArea: safeArea
             ),
             context: context
         )

@@ -13,6 +13,7 @@ struct LookPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             frameSection
+            safeAreaSection
             gradeSection
             labelSection
         }
@@ -61,6 +62,45 @@ struct LookPanel: View {
         }
         .abCard()
         .abSection("Rahmen")
+    }
+
+    // MARK: - Story safe area
+
+    private var safeAreaSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Bedienelemente freihalten", isOn: state.exportBinding(\.respectPlayerChrome))
+                .toggleStyle(.checkbox)
+                .help("Hält Rahmen und Text aus den Streifen heraus, in die Instagram Kontoname und Antwortfeld zeichnet")
+
+            if state.project.export.respectPlayerChrome {
+                labelledSlider(
+                    "Oben",
+                    value: state.exportBinding(\.chromeSafeTop),
+                    range: 0...SafeArea.maximum,
+                    readout: "\(Int(state.project.export.chromeSafeTop * 100)) %"
+                )
+                labelledSlider(
+                    "Unten",
+                    value: state.exportBinding(\.chromeSafeBottom),
+                    range: 0...SafeArea.maximum,
+                    readout: "\(Int(state.project.export.chromeSafeBottom * 100)) %"
+                )
+
+                Text(hint)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .abCard()
+        .abSection("Story-Schutzzone (9:16)")
+    }
+
+    /// The reserved strips only exist on 9:16, so say so rather than leaving
+    /// two sliders that appear to do nothing.
+    private var hint: String {
+        state.project.export.formats.contains(where: \.hasPlayerChrome)
+            ? "Gilt nur für 9:16 — ein Beitrag im Feed hat keine Bedienelemente über dem Bild. Im Vorschauformat 9:16 markieren gestrichelte Linien die Streifen; exportiert werden sie nie."
+            : "Gilt nur für 9:16. Dieses Format ist gerade nicht ausgewählt."
     }
 
     // MARK: - Grade

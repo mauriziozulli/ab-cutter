@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.9.0 — a safe area for the story chrome
+
+- The frame no longer runs under Instagram's own controls. A 9:16 clip plays
+  full screen with the account name over the top of it and the reply field
+  over the bottom; the app now reserves a strip at each end of that canvas and
+  lays the frame, its border and the burnt-in type out inside what is left.
+  With the defaults the frame's top edge drops from 75 px to 255 px below the
+  canvas top, which clears the header.
+- 10 % top and 6 % bottom by default, both adjustable up to 25 %. Instagram
+  publishes 250 px at each end of a 1080×1920 story as a blanket figure; the
+  defaults are measured against where the controls actually land, and the
+  sliders are there because the platforms move them.
+- Only 9:16. A feed post draws its chrome outside the picture, so 4:5, 1:1 and
+  16:9 are laid out exactly as before — pixel for pixel.
+- A full-bleed picture still fills the canvas. The reserved strips hold the
+  app's own furniture, not the film: the header may sit over the picture, it
+  just must not sit over the frame or the label.
+- Two dashed rules mark the strips in the 9:16 preview so the sliders can be
+  judged against the picture. The exporter never asks for them, so they cannot
+  reach a delivered file.
+- Cover images honour the same strips, so a story title card no longer sets
+  its headline behind the account name.
+- **Fixed:** a project saved by an older version failed to open as soon as a
+  release added a setting. Swift's generated decoder treats a missing key as
+  an error even where the property has a default, so every new setting
+  invalidated every saved project. The project, export and cover settings are
+  now decoded key by key and fall back to today's defaults. A file that is not
+  a project at all is still rejected.
+
 ## 0.8.1 — the fold is audible, and a clip click parks the playhead
 
 - **Fixed:** a folded source stayed silent. `AVAudioFile` has no `close()` —

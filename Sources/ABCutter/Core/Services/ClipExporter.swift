@@ -58,6 +58,7 @@ enum ClipExporter {
             frameBackdrop: request.settings.frameBackdrop,
             insetScale: request.settings.insetScale,
             labelPosition: request.settings.labelPosition,
+            safeArea: request.settings.safeArea(for: request.format),
             beforeOverlay: request.overlays.before,
             afterOverlay: request.overlays.after,
             sourceNaturalSize: clipComposition.videoNaturalSize,

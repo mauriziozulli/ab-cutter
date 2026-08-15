@@ -592,6 +592,9 @@ final class AppState: ObservableObject {
     func applyPlayerSettings() {
         player.apply(project: project, selectedClip: selectedClip)
         refreshPreviewLabels()
+        // A cover is cropped and laid out with the export settings too, so the
+        // safe area and the fit mode have to reach its preview as well.
+        refreshTitleCardPreview()
     }
 
     /// Re-samples the burnt-in labels for the selected clip so the preview
@@ -611,7 +614,14 @@ final class AppState: ObservableObject {
         labelTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 300_000_000)
             if Task.isCancelled { return }
-            let overlays = await LabelFactory.overlays(project: snapshot, clip: clip, format: format)
+            // Guides on: the preview is the only place the reserved strips can
+            // be judged against the picture before anything is delivered.
+            let overlays = await LabelFactory.overlays(
+                project: snapshot,
+                clip: clip,
+                format: format,
+                guides: true
+            )
             guard let self, !Task.isCancelled else { return }
             self.player.previewOverlays = overlays
             self.player.apply(project: self.project, selectedClip: self.selectedClip)
@@ -734,6 +744,7 @@ final class AppState: ObservableObject {
             fitMode: project.export.fitMode,
             panX: selectedClip?.panX ?? 0,
             panY: selectedClip?.panY ?? 0,
+            safeArea: project.export.safeArea(for: format),
             scale: min(1, 640 / format.size.height)
         )
     }
@@ -777,7 +788,8 @@ final class AppState: ObservableObject {
                         settings: settings,
                         fitMode: project.export.fitMode,
                         panX: selectedClip?.panX ?? 0,
-                        panY: selectedClip?.panY ?? 0
+                        panY: selectedClip?.panY ?? 0,
+                        safeArea: project.export.safeArea(for: format)
                     ) else { continue }
                     let url = folder.appendingPathComponent(
                         "\(project.name)_\(stamp)_title_\(format.fileSuffix).\(settings.fileFormat.fileExtension)"

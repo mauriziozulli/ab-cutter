@@ -435,6 +435,37 @@ enum SocialFormat: String, Codable, CaseIterable, Identifiable, Sendable {
         case .landscape169: "16x9"
         }
     }
+
+    /// True where the clip plays full screen with the platform's own controls
+    /// drawn over it — a story or a reel. A feed post keeps its chrome outside
+    /// the picture, so nothing there has to be kept clear.
+    var hasPlayerChrome: Bool { self == .portrait916 }
+}
+
+/// Strips at the top and bottom of the canvas that the app keeps its own
+/// furniture out of, as fractions of the canvas height.
+///
+/// A story plays full screen with the account name over the top of it and a
+/// reply bar over the bottom, so anything drawn towards the canvas edge ends
+/// up underneath them. Fractions rather than pixels, because the same layout
+/// is measured at proxy sizes for the preview and for the label tint.
+struct SafeArea: Codable, Hashable, Sendable {
+    var top: Double = 0
+    var bottom: Double = 0
+
+    static let none = SafeArea()
+
+    /// Past this there is no canvas left to compose in.
+    static let maximum: Double = 0.25
+
+    var isEmpty: Bool { top < 0.001 && bottom < 0.001 }
+
+    var clamped: SafeArea {
+        SafeArea(
+            top: min(max(top, 0), Self.maximum),
+            bottom: min(max(bottom, 0), Self.maximum)
+        )
+    }
 }
 
 enum VideoCodecChoice: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -479,10 +510,58 @@ struct ExportSettings: Codable, Hashable {
     var audioCrossfadeMilliseconds: Double = 40
     /// Manual bitrate override in Mbit/s. `nil` uses the automatic estimate.
     var videoBitrateMbps: Double?
+    /// Keep the frame and the burnt-in type out of the strips where a story
+    /// player draws its own controls.
+    var respectPlayerChrome: Bool = true
+    /// Header: the account name and the progress bars.
+    var chromeSafeTop: Double = 0.10
+    /// Footer: the reply field.
+    var chromeSafeBottom: Double = 0.06
 
     var outputFolderURL: URL? {
         guard let outputFolderPath else { return nil }
         return URL(fileURLWithPath: outputFolderPath)
+    }
+
+    /// Nothing is reserved on a format that plays inside a feed card.
+    func safeArea(for format: SocialFormat) -> SafeArea {
+        guard respectPlayerChrome, format.hasPlayerChrome else { return .none }
+        return SafeArea(top: chromeSafeTop, bottom: chromeSafeBottom).clamped
+    }
+
+    init() {}
+
+    /// Decoded key by key so a project written by an earlier version still
+    /// opens. Swift's synthesised decoder treats a missing key as an error
+    /// even where the property has a default, which would mean every release
+    /// that adds a setting invalidates every saved project.
+    init(from decoder: Decoder) throws {
+        self = ExportSettings()
+        guard let box = try? decoder.container(keyedBy: CodingKeys.self) else { return }
+        if let value = try? box.decode([SocialFormat].self, forKey: .formats) { formats = value }
+        if let value = try? box.decode(String.self, forKey: .outputFolderPath) { outputFolderPath = value }
+        if let value = try? box.decode(VideoCodecChoice.self, forKey: .codec) { codec = value }
+        if let value = try? box.decode(FitMode.self, forKey: .fitMode) { fitMode = value }
+        if let value = try? box.decode(LookStyle.self, forKey: .beforeLook) { beforeLook = value }
+        if let value = try? box.decode(LookStyle.self, forKey: .afterLook) { afterLook = value }
+        if let value = try? box.decode(FrameTreatment.self, forKey: .frameTreatment) { frameTreatment = value }
+        if let value = try? box.decode(FrameBackdrop.self, forKey: .frameBackdrop) { frameBackdrop = value }
+        if let value = try? box.decode(Double.self, forKey: .insetScale) { insetScale = value }
+        if let value = try? box.decode(Bool.self, forKey: .showFrameBorder) { showFrameBorder = value }
+        if let value = try? box.decode(Bool.self, forKey: .showLabels) { showLabels = value }
+        if let value = try? box.decode(String.self, forKey: .beforeLabel) { beforeLabel = value }
+        if let value = try? box.decode(String.self, forKey: .afterLabel) { afterLabel = value }
+        if let value = try? box.decode(String.self, forKey: .subtitleText) { subtitleText = value }
+        if let value = try? box.decode(LabelPosition.self, forKey: .labelPosition) { labelPosition = value }
+        if let value = try? box.decode(LabelStyle.self, forKey: .labelStyle) { labelStyle = value }
+        if let value = try? box.decode(LabelShadowMode.self, forKey: .labelShadow) { labelShadow = value }
+        if let value = try? box.decode(Double.self, forKey: .audioCrossfadeMilliseconds) {
+            audioCrossfadeMilliseconds = value
+        }
+        if let value = try? box.decode(Double.self, forKey: .videoBitrateMbps) { videoBitrateMbps = value }
+        if let value = try? box.decode(Bool.self, forKey: .respectPlayerChrome) { respectPlayerChrome = value }
+        if let value = try? box.decode(Double.self, forKey: .chromeSafeTop) { chromeSafeTop = value }
+        if let value = try? box.decode(Double.self, forKey: .chromeSafeBottom) { chromeSafeBottom = value }
     }
 }
 
@@ -540,6 +619,22 @@ struct StillSettings: Codable, Hashable {
         !headline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !subline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+
+    init() {}
+
+    /// Lenient for the same reason as `ExportSettings`.
+    init(from decoder: Decoder) throws {
+        self = StillSettings()
+        guard let box = try? decoder.container(keyedBy: CodingKeys.self) else { return }
+        if let value = try? box.decode(String.self, forKey: .headline) { headline = value }
+        if let value = try? box.decode(String.self, forKey: .subline) { subline = value }
+        if let value = try? box.decode(Double.self, forKey: .blurStrength) { blurStrength = value }
+        if let value = try? box.decode(Double.self, forKey: .dimStrength) { dimStrength = value }
+        if let value = try? box.decode(StillTextPosition.self, forKey: .textPosition) { textPosition = value }
+        if let value = try? box.decode(Bool.self, forKey: .saveFullFrame) { saveFullFrame = value }
+        if let value = try? box.decode(Bool.self, forKey: .saveTitleCards) { saveTitleCards = value }
+        if let value = try? box.decode(StillFileFormat.self, forKey: .fileFormat) { fileFormat = value }
+    }
 }
 
 // MARK: - Project
@@ -566,6 +661,35 @@ struct ABProject: Codable {
     var defaultAfterSourceID: UUID?
     var export = ExportSettings()
     var stills = StillSettings()
+
+    init() {}
+
+    /// Lenient for the same reason as `ExportSettings`. The document wrapper
+    /// still decodes its version strictly, so a file that is not a project at
+    /// all fails there rather than opening as an empty one.
+    init(from decoder: Decoder) throws {
+        self = ABProject()
+        guard let box = try? decoder.container(keyedBy: CodingKeys.self) else { return }
+        if let value = try? box.decode(String.self, forKey: .videoPath) { videoPath = value }
+        if let value = try? box.decode(Double.self, forKey: .videoDurationSeconds) { videoDurationSeconds = value }
+        if let value = try? box.decode(Double.self, forKey: .videoNaturalWidth) { videoNaturalWidth = value }
+        if let value = try? box.decode(Double.self, forKey: .videoNaturalHeight) { videoNaturalHeight = value }
+        if let value = try? box.decode(Double.self, forKey: .videoTimecodeStartSeconds) {
+            videoTimecodeStartSeconds = value
+        }
+        if let value = try? box.decode(FrameRate.self, forKey: .frameRate) { frameRate = value }
+        if let value = try? box.decode(Bool.self, forKey: .dropFrame) { dropFrame = value }
+        if let value = try? box.decode([AudioSource].self, forKey: .audioSources) { audioSources = value }
+        if let value = try? box.decode([Clip].self, forKey: .clips) { clips = value }
+        if let value = try? box.decode(Double.self, forKey: .defaultClipLengthSeconds) {
+            defaultClipLengthSeconds = value
+        }
+        if let value = try? box.decode(Bool.self, forKey: .keepClipLengthFixed) { keepClipLengthFixed = value }
+        if let value = try? box.decode(UUID.self, forKey: .defaultBeforeSourceID) { defaultBeforeSourceID = value }
+        if let value = try? box.decode(UUID.self, forKey: .defaultAfterSourceID) { defaultAfterSourceID = value }
+        if let value = try? box.decode(ExportSettings.self, forKey: .export) { export = value }
+        if let value = try? box.decode(StillSettings.self, forKey: .stills) { stills = value }
+    }
 
     var videoURL: URL? {
         guard let videoPath else { return nil }

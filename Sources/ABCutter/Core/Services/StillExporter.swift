@@ -56,6 +56,7 @@ enum StillExporter {
         fitMode: FitMode,
         panX: Double,
         panY: Double,
+        safeArea: SafeArea = .none,
         scale: CGFloat = 1
     ) -> CGImage? {
         let canvas = CGSize(
@@ -72,7 +73,7 @@ enum StillExporter {
 
         // The tint is read from the finished backdrop, not the raw frame, so it
         // contrasts with what the type will actually sit on.
-        let band = textBand(targetSize: canvas, position: settings.textPosition)
+        let band = textBand(targetSize: canvas, position: settings.textPosition, safeArea: safeArea)
         let tint = PaletteSampler.tint(
             of: background,
             sceneRect: target,
@@ -87,7 +88,8 @@ enum StillExporter {
             subline: settings.subline,
             tint: tint,
             position: settings.textPosition,
-            shadow: tint.needsShadow
+            shadow: tint.needsShadow,
+            safeArea: safeArea
         ) {
             composed = CIImage(cgImage: overlay).composited(over: composed)
         }
@@ -122,12 +124,19 @@ enum StillExporter {
 
     // MARK: - Layout
 
-    /// Where the type sits, used to measure the contrast it has to beat.
-    static func textBand(targetSize: CGSize, position: StillTextPosition) -> CGRect {
-        let height = (targetSize.height * 0.34).rounded()
+    /// Where the type sits, used to measure the contrast it has to beat. The
+    /// picture behind a cover still bleeds to the canvas edge; only the type
+    /// keeps out of the story player's strips.
+    static func textBand(
+        targetSize: CGSize,
+        position: StillTextPosition,
+        safeArea: SafeArea = .none
+    ) -> CGRect {
+        let content = FrameRenderer.contentRect(targetSize: targetSize, safeArea: safeArea)
+        let height = min((targetSize.height * 0.34).rounded(), content.height)
         switch position {
         case .top:
-            return CGRect(x: 0, y: targetSize.height - height, width: targetSize.width, height: height)
+            return CGRect(x: 0, y: content.maxY - height, width: targetSize.width, height: height)
         case .centre:
             return CGRect(
                 x: 0,
@@ -136,7 +145,7 @@ enum StillExporter {
                 height: height
             )
         case .bottom:
-            return CGRect(x: 0, y: 0, width: targetSize.width, height: height)
+            return CGRect(x: 0, y: content.minY, width: targetSize.width, height: height)
         }
     }
 
