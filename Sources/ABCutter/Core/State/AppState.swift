@@ -18,6 +18,8 @@ final class AppState: ObservableObject {
 
     /// Timeline zoom: 1 shows the whole film, higher values zoom in.
     @Published var zoom: Double = 1
+    /// Which inspector the right-hand column is showing.
+    @Published var inspectorTab: InspectorTab = .clips
 
     let player = PlayerController()
     let exportQueue = ExportQueue()
@@ -87,6 +89,11 @@ final class AppState: ObservableObject {
             fresh.export = project.export
             fresh.defaultClipLengthSeconds = project.defaultClipLengthSeconds
             fresh.keepClipLengthFixed = project.keepClipLengthFixed
+            // Look and delivery choices survive a new film; the cover text does
+            // not, because it belongs to the film that was just replaced.
+            fresh.stills = project.stills
+            fresh.stills.headline = ""
+            fresh.stills.subline = ""
 
             if probe.hasAudio {
                 var embedded = AudioSource(
@@ -579,9 +586,15 @@ final class AppState: ObservableObject {
             do {
                 let frame = try await StillExporter.grab(videoURL: url, at: seconds)
                 guard let self else { return }
+                // The film's name is nearly always the right headline, and an
+                // empty title card is a poor thing to hand someone.
+                if self.project.stills.headline.isEmpty {
+                    self.project.stills.headline = self.project.name
+                }
                 self.grabbedFrame = frame
                 self.grabbedAtSeconds = seconds
                 self.status = "Grabbed \(frame.width)×\(frame.height) at \(Timecode.clockString(fromSeconds: seconds))."
+                self.inspectorTab = .cover
                 self.refreshTitleCardPreview()
             } catch {
                 self?.errorMessage = error.localizedDescription

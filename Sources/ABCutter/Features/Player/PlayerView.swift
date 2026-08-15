@@ -238,7 +238,6 @@ struct PlayerPane: View {
                 .disabled(clip == nil)
             Button("New clip") { state.addClipAtPlayhead() }
                 .disabled(!state.project.hasVideo)
-                .keyboardShortcut("n", modifiers: .command)
                 .help("Drop a \(String(format: "%g", state.project.defaultClipLengthSeconds)) s clip at the playhead (⌘N)")
         }
         .buttonStyle(.bordered)

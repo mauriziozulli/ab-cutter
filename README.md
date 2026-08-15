@@ -58,6 +58,19 @@ can be moved anywhere. Export every enabled clip into every selected format in
 one run — 4:5, 9:16, 1:1 and 16:9 are all available, and the clip × format
 matrix is encoded sequentially with per-file progress.
 
+## Getting around
+
+The window is three columns: audio layers on the left, the picture and
+timeline in the middle, and a four-tab inspector on the right — **Clips**,
+**Look**, **Cover**, **Export** — matching the four moments of the job.
+
+Everything is also in the menu bar with a shortcut. Transport is ⌘J / ⌘K / ⌘L
+for back a frame, play, forward a frame, with Shift for ten. ⌘N drops a clip
+at the playhead, ⌘[ and ⌘] mark in and out, ⌘\\ moves the A/B switch, and
+⌘0–⌘4 flip the framing preview between full frame and each social format.
+Shortcuts all carry a modifier on purpose: a bare key equivalent would be
+swallowed before it reached a text field.
+
 ## Requirements
 
 - macOS 13 or later
@@ -99,6 +112,7 @@ so the first launch needs **right-click → Open**.
 | Overlay assembly | `Core/Services/LabelFactory.swift` |
 | Reader → writer encode | `Core/Services/ClipExporter.swift` |
 | Batch run | `Core/Services/ExportQueue.swift` |
+| Menu bar and shortcuts | `App/AppCommands.swift` |
 | Framegrabs and title cards | `Core/Services/StillExporter.swift` |
 
 ### The timeline model

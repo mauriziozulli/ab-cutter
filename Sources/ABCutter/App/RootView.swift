@@ -2,7 +2,7 @@ import SwiftUI
 
 @MainActor
 struct RootView: View {
-    @StateObject private var state = AppState()
+    @ObservedObject var state: AppState
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,89 +17,178 @@ struct RootView: View {
                 }
                 .frame(minWidth: 480)
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        ClipsPanel(state: state)
-                        Divider()
-                        StillsPanel(state: state)
-                        Divider()
-                        ExportPanel(state: state, queue: state.exportQueue)
-                    }
-                    .padding(Theme.panelPadding)
-                }
-                .frame(minWidth: 300, idealWidth: 340, maxWidth: 460)
-                .background(Theme.panelBackground)
+                inspector
+                    .frame(minWidth: 300, idealWidth: 350, maxWidth: 470)
             }
 
             Divider()
             statusBar
         }
         .frame(minWidth: 1120, minHeight: 720)
-        .toolbar {
-            ToolbarItemGroup {
-                Button {
-                    state.presentVideoPicker()
-                } label: {
-                    Label("Video", systemImage: "film")
-                }
-                .help("Load the finished film")
-
-                Button {
-                    state.presentAudioPicker()
-                } label: {
-                    Label("Audio", systemImage: "waveform")
-                }
-                .help("Add a mix or stem under the picture")
-
-                Button {
-                    state.autoSyncAll()
-                } label: {
-                    Label("Sync", systemImage: "timeline.selection")
-                }
-                .help("Sync every stamped file by timecode")
-
-                Spacer()
-
-                Button {
-                    state.openProject()
-                } label: {
-                    Label("Open", systemImage: "folder")
-                }
-
-                Button {
-                    state.saveProject()
-                } label: {
-                    Label("Save", systemImage: "square.and.arrow.down")
-                }
-            }
-        }
+        .toolbar { toolbarItems }
         .alert(
             "Something needs attention",
             isPresented: Binding(
                 get: { state.errorMessage != nil },
                 set: { if !$0 { state.errorMessage = nil } }
             ),
-            actions: {
-                Button("OK") { state.errorMessage = nil }
-            },
-            message: {
-                Text(state.errorMessage ?? "")
-            }
+            actions: { Button("OK") { state.errorMessage = nil } },
+            message: { Text(state.errorMessage ?? "") }
         )
         .navigationTitle(state.windowTitle)
     }
 
+    // MARK: - Inspector
+
+    /// One tab at a time rather than one long scroll. The four tabs match the
+    /// four moments of the job: cut it, style it, make its cover, ship it.
+    private var inspector: some View {
+        VStack(spacing: 0) {
+            if state.project.hasVideo {
+                Picker("", selection: $state.inspectorTab) {
+                    ForEach(InspectorTab.allCases) { tab in
+                        Label(tab.title, systemImage: tab.symbol).tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, Theme.panelPadding)
+                .padding(.vertical, 8)
+
+                Divider()
+
+                ScrollView {
+                    Group {
+                        switch state.inspectorTab {
+                        case .clips: ClipsPanel(state: state)
+                        case .look: LookPanel(state: state)
+                        case .cover: StillsPanel(state: state)
+                        case .export: ExportPanel(state: state, queue: state.exportQueue)
+                        }
+                    }
+                    .padding(Theme.panelPadding)
+                }
+            } else {
+                gettingStarted
+            }
+        }
+        .background(Theme.panelBackground)
+    }
+
+    /// Without a film every panel is speculative, so the column explains the
+    /// run of play instead of showing controls that cannot do anything yet.
+    private var gettingStarted: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("How this goes")
+                .font(.system(size: 12, weight: .semibold))
+
+            step(1, "Load the finished film.", "Its timecode and frame rate are read automatically.")
+            step(2, "Add your mixes and stems.", "Stamped files line up on their own; the rest you nudge.")
+            step(3, "Mark clips at a house length.", "Scrub, ⌘N, scrub, ⌘N — the A/B lands in the middle.")
+            step(4, "Grab a cover and export.", "Every clip against every format in one run.")
+
+            Divider()
+
+            Button("Choose video…") { state.presentVideoPicker() }
+                .buttonStyle(.borderedProminent)
+
+            Spacer()
+        }
+        .padding(Theme.panelPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func step(_ number: Int, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("\(number)")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(width: 17, height: 17)
+                .background(Circle().fill(Theme.accent))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption)
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // MARK: - Toolbar
+
+    /// Deliberately short. Everything here is also in the menu bar with a
+    /// shortcut; the toolbar only carries the handful of actions that start a
+    /// session or end one.
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        ToolbarItemGroup {
+            Button { state.presentVideoPicker() } label: {
+                Label("Video", systemImage: "film")
+            }
+            .help("Load the finished film (⌘O)")
+
+            Button { state.presentAudioPicker() } label: {
+                Label("Audio", systemImage: "waveform")
+            }
+            .disabled(!state.project.hasVideo)
+            .help("Add a mix or stem under the picture (⇧⌘O)")
+
+            Button { state.autoSyncAll() } label: {
+                Label("Sync", systemImage: "timeline.selection")
+            }
+            .disabled(state.project.videoTimecodeStartSeconds == nil)
+            .help("Sync every stamped file by timecode")
+
+            Spacer()
+
+            Button { state.grabStill() } label: {
+                Label("Cover", systemImage: "camera")
+            }
+            .disabled(!state.project.hasVideo)
+            .help("Grab the frame at the playhead (⇧⌘G)")
+
+            Button { state.startExport() } label: {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+            .disabled(!state.project.hasVideo || state.exportQueue.isRunning)
+            .help("Export every enabled clip (⌘E)")
+        }
+    }
+
+    // MARK: - Status bar
+
     private var statusBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             if state.isLoadingMedia {
                 ProgressView().controlSize(.small)
             }
+
             Text(state.status)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
+                .layoutPriority(1)
+
+            if state.project.hasVideo {
+                Divider().frame(height: 12)
+                Text(state.summaryLine)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
+
             Spacer()
+
+            if state.exportQueue.isRunning {
+                ProgressView(value: state.exportQueue.overallProgress)
+                    .controlSize(.small)
+                    .frame(width: 110)
+            }
+
             Text("v\(AppVersion.string)")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)

@@ -66,15 +66,15 @@ struct StillsPanel: View {
 
     private var textFields: some View {
         VStack(alignment: .leading, spacing: 6) {
-            TextField("Headline", text: stillBinding(\.headline), axis: .vertical)
+            TextField("Headline", text: state.stillBinding(\.headline), axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
                 .lineLimit(1...3)
-            TextField("Second line — direction, credits", text: stillBinding(\.subline))
+            TextField("Second line — direction, credits", text: state.stillBinding(\.subline))
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
 
-            Picker("Text", selection: stillBinding(\.textPosition)) {
+            Picker("Text", selection: state.stillBinding(\.textPosition)) {
                 ForEach(StillTextPosition.allCases) { position in
                     Text(position.title).tag(position)
                 }
@@ -88,13 +88,13 @@ struct StillsPanel: View {
         VStack(alignment: .leading, spacing: 6) {
             slider(
                 label: "Blur",
-                value: stillBinding(\.blurStrength),
+                value: state.stillBinding(\.blurStrength),
                 range: 0...100,
                 readout: "\(Int(state.project.stills.blurStrength))"
             )
             slider(
                 label: "Darken",
-                value: stillBinding(\.dimStrength),
+                value: state.stillBinding(\.dimStrength),
                 range: 0...0.8,
                 readout: "\(Int(state.project.stills.dimStrength * 100)) %"
             )
@@ -125,14 +125,14 @@ struct StillsPanel: View {
 
     private var outputRow: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Toggle("Full-resolution frame", isOn: stillBinding(\.saveFullFrame))
+            Toggle("Full-resolution frame", isOn: state.stillBinding(\.saveFullFrame))
                 .toggleStyle(.checkbox)
                 .font(.caption)
-            Toggle("Title card per output format", isOn: stillBinding(\.saveTitleCards))
+            Toggle("Title card per output format", isOn: state.stillBinding(\.saveTitleCards))
                 .toggleStyle(.checkbox)
                 .font(.caption)
 
-            Picker("File", selection: stillBinding(\.fileFormat)) {
+            Picker("File", selection: state.stillBinding(\.fileFormat)) {
                 ForEach(StillFileFormat.allCases) { format in
                     Text(format.title).tag(format)
                 }
@@ -144,17 +144,5 @@ struct StillsPanel: View {
                 .controlSize(.small)
                 .disabled(!state.project.stills.saveFullFrame && !state.project.stills.saveTitleCards)
         }
-    }
-
-    /// Writes a still setting and re-renders the preview, so every control is
-    /// judged against the picture rather than in the abstract.
-    private func stillBinding<Value>(_ keyPath: WritableKeyPath<StillSettings, Value>) -> Binding<Value> {
-        Binding(
-            get: { state.project.stills[keyPath: keyPath] },
-            set: {
-                state.project.stills[keyPath: keyPath] = $0
-                state.refreshTitleCardPreview()
-            }
-        )
     }
 }

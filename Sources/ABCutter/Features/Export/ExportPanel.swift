@@ -1,16 +1,14 @@
 import SwiftUI
 
-/// Right column, lower half: what the batch produces and where it lands.
+/// What the batch produces, where it lands, and how it is going.
 @MainActor
 struct ExportPanel: View {
     @ObservedObject var state: AppState
     @ObservedObject var queue: ExportQueue
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             formatsSection
-            frameSection
-            lookSection
             deliverySection
             runSection
             if !queue.jobs.isEmpty {
@@ -35,34 +33,10 @@ struct ExportPanel: View {
                 }
                 .toggleStyle(.checkbox)
             }
-
-            Picker("Fit", selection: Binding(
-                get: { state.project.export.fitMode },
-                set: {
-                    state.project.export.fitMode = $0
-                    state.applyPlayerSettings()
-                }
-            )) {
-                ForEach(FitMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
-                }
-            }
-            .controlSize(.small)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .abCard()
         .abSection("Output formats")
-    }
-
-    /// Writes an export setting and re-applies it to the preview, so the look
-    /// controls and the burnt-in labels stay in step with what will be encoded.
-    private func exportBinding<Value>(_ keyPath: WritableKeyPath<ExportSettings, Value>) -> Binding<Value> {
-        Binding(
-            get: { state.project.export[keyPath: keyPath] },
-            set: {
-                state.project.export[keyPath: keyPath] = $0
-                state.applyPlayerSettings()
-            }
-        )
     }
 
     private func formatBinding(_ format: SocialFormat) -> Binding<Bool> {
@@ -81,149 +55,11 @@ struct ExportPanel: View {
         )
     }
 
-    // MARK: - Frame
-
-    private var frameSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker("Frame", selection: exportBinding(\.frameTreatment)) {
-                ForEach(FrameTreatment.allCases) { treatment in
-                    Text(treatment.title).tag(treatment)
-                }
-            }
-            .controlSize(.small)
-
-            if state.project.export.frameTreatment != .fullBleed {
-                HStack(spacing: 6) {
-                    Text("Size")
-                        .font(.caption)
-                        .frame(width: 52, alignment: .leading)
-                    Slider(value: exportBinding(\.insetScale), in: 0.6...0.98)
-                        .controlSize(.mini)
-                    Text("\(Int(state.project.export.insetScale * 100)) %")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 42, alignment: .trailing)
-                }
-
-                Picker("Around", selection: exportBinding(\.frameBackdrop)) {
-                    ForEach(FrameBackdrop.allCases) { backdrop in
-                        Text(backdrop.title).tag(backdrop)
-                    }
-                }
-                .controlSize(.small)
-
-                Toggle("Hairline border", isOn: exportBinding(\.showFrameBorder))
-                    .toggleStyle(.checkbox)
-
-                Text("The picture snapping out to full bleed at the switch carries the A/B on its own — a scale change reads faster on a phone than a colour change.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .abCard()
-        .abSection("Framing")
-    }
-
-    // MARK: - Look
-
-    private var lookSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker("Before", selection: Binding(
-                get: { state.project.export.beforeLook },
-                set: {
-                    state.project.export.beforeLook = $0
-                    state.applyPlayerSettings()
-                }
-            )) {
-                ForEach(LookStyle.allCases) { look in
-                    Text(look.title).tag(look)
-                }
-            }
-            .controlSize(.small)
-
-            Picker("After", selection: Binding(
-                get: { state.project.export.afterLook },
-                set: {
-                    state.project.export.afterLook = $0
-                    state.applyPlayerSettings()
-                }
-            )) {
-                ForEach(LookStyle.allCases) { look in
-                    Text(look.title).tag(look)
-                }
-            }
-            .controlSize(.small)
-
-            Toggle("Burn in labels", isOn: exportBinding(\.showLabels))
-                .toggleStyle(.checkbox)
-
-            if state.project.export.showLabels {
-                HStack(spacing: 6) {
-                    TextField("Before", text: exportBinding(\.beforeLabel))
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.small)
-                    TextField("After", text: exportBinding(\.afterLabel))
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.small)
-                }
-
-                TextField("Second line — title, direction, credits", text: exportBinding(\.subtitleText))
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
-                    .help("A quieter line centred under the label, the same on both halves")
-
-                Picker("Style", selection: exportBinding(\.labelStyle)) {
-                    ForEach(LabelStyle.allCases) { style in
-                        Text(style.title).tag(style)
-                    }
-                }
-                .controlSize(.small)
-
-                if state.project.export.labelStyle == .tinted {
-                    Picker("Shadow", selection: exportBinding(\.labelShadow)) {
-                        ForEach(LabelShadowMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .controlSize(.small)
-                    .help("Auto adds a soft shadow only where the tint would not read against the picture")
-                }
-
-                Picker("Position", selection: exportBinding(\.labelPosition)) {
-                    ForEach(LabelPosition.allCases) { position in
-                        Text(position.title).tag(position)
-                    }
-                }
-                .controlSize(.small)
-
-                if state.project.export.labelStyle == .tinted {
-                    Text("The tint is read from the colour frame, so the black-and-white half keeps a coloured label.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            HStack(spacing: 6) {
-                Text("Audio crossfade")
-                    .font(.caption)
-                Slider(value: $state.project.export.audioCrossfadeMilliseconds, in: 0...500)
-                    .controlSize(.mini)
-                Text("\(Int(state.project.export.audioCrossfadeMilliseconds)) ms")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 52, alignment: .trailing)
-            }
-        }
-        .abCard()
-        .abSection("A/B look")
-    }
-
     // MARK: - Delivery
 
     private var deliverySection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("Codec", selection: $state.project.export.codec) {
+            Picker("Codec", selection: state.exportBinding(\.codec)) {
                 ForEach(VideoCodecChoice.allCases) { codec in
                     Text(codec.title).tag(codec)
                 }
@@ -231,6 +67,8 @@ struct ExportPanel: View {
             .controlSize(.small)
 
             HStack(spacing: 6) {
+                Image(systemName: state.project.export.outputFolderPath == nil ? "folder.badge.questionmark" : "folder")
+                    .foregroundStyle(state.project.export.outputFolderPath == nil ? Color.orange : Color.secondary)
                 Text(folderLabel)
                     .font(.caption)
                     .foregroundStyle(state.project.export.outputFolderPath == nil ? Color.orange : Color.secondary)
@@ -253,24 +91,23 @@ struct ExportPanel: View {
     // MARK: - Run
 
     private var runSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(plan)
+                .font(.caption)
+                .foregroundStyle(plannedFileCount == 0 ? Color.orange : Color.secondary)
+
             HStack {
                 Button(queue.isRunning ? "Exporting…" : "Export batch") {
                     state.startExport()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(queue.isRunning || !state.project.hasVideo)
+                .disabled(queue.isRunning || plannedFileCount == 0)
 
                 if queue.isRunning {
                     Button("Cancel") { queue.cancel() }
                         .controlSize(.small)
                 }
-
                 Spacer()
-
-                Text(plan)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
             }
 
             if queue.isRunning {
@@ -284,11 +121,23 @@ struct ExportPanel: View {
                     .foregroundStyle(queue.failedCount > 0 ? Color.orange : Color.secondary)
             }
         }
+        .abCard()
+        .abSection("Run")
+    }
+
+    private var enabledClipCount: Int {
+        state.project.clips.filter { $0.isEnabled && $0.duration > 0 }.count
+    }
+
+    private var plannedFileCount: Int {
+        enabledClipCount * state.project.export.formats.count
     }
 
     private var plan: String {
-        let clips = state.project.clips.filter { $0.isEnabled && $0.duration > 0 }.count
+        let clips = enabledClipCount
         let formats = state.project.export.formats.count
+        guard clips > 0 else { return "No clips are marked for export." }
+        guard formats > 0 else { return "No output format is selected." }
         let total = clips * formats
         return "\(clips) clip\(clips == 1 ? "" : "s") × \(formats) format\(formats == 1 ? "" : "s") = \(total) file\(total == 1 ? "" : "s")"
     }

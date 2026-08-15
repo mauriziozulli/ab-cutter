@@ -4,14 +4,17 @@ import SwiftUI
 @main
 struct ABCutterApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    /// Owned here rather than by the root view, so the menu bar can drive the
+    /// same actions the panels do.
+    @StateObject private var state = AppState()
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            RootView(state: state)
         }
         .windowToolbarStyle(.unified)
         .commands {
-            CommandGroup(replacing: .newItem) {}
+            AppCommands(state: state)
         }
     }
 }

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.0 — a proper menu bar and a tabbed inspector
+
+- A real macOS menu bar: File, Clip, Playback and View, with every action the
+  app can perform and a keyboard shortcut on each. A toolbar teaches nothing
+  about shortcuts and a panel buries anything below the fold; a menu does both
+  jobs. Transport follows the J / K / L convention, bound with Command so a
+  bare keystroke is never stolen from a text field.
+- The right-hand column is now four tabs — Clips, Look, Cover, Export —
+  instead of one scroll holding seven stacked cards. The tabs match the four
+  moments of the job rather than the shape of the code.
+- Without a film loaded that column explains the run of play in four steps
+  instead of showing controls that cannot do anything yet.
+- The status bar carries the project at a glance: clip count, how many are
+  enabled, audio layers, output folder, and batch progress while it runs.
+- The toolbar is shorter and gained Cover and Export, the two actions that
+  finish a session.
+- Grabbing a cover switches to the Cover tab and prefills the headline with
+  the film's name.
+- Look settings now survive loading a new film; the cover text does not,
+  because it belonged to the film that was replaced.
+
 ## 0.5.0 — cover images
 
 - A Cover image section: park the playhead, grab that frame at the film's
