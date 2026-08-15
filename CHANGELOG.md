@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0 — channel folding per source
+
+- A channel mode on every audio layer: stereo as-is, sum L+R, left only, or
+  right only. Production sound frequently carries the dialogue on one channel,
+  and "left only" centres it without the 6 dB loss that summing against a
+  silent side would cost.
+- The fold is rendered into a mono companion file rather than mixed live. An
+  `AVAudioMix` can set a track's volume but cannot re-route its channels, and
+  an audio tap is not honoured on every rendering path — a tap could sound
+  right in the preview and be wrong in the file. Rendering once means the
+  preview and the export read the same audio by construction.
+- The companion is genuinely one channel, so AVFoundation centres it and the
+  file is half the size. It is cached in the temporary directory and re-made
+  automatically when a project is opened and the cache has been cleared.
+- The peak envelope is redrawn after a fold, so the lane shows what is heard.
+
 ## 0.7.0 — live A/B fixed, German interface, several switches per clip
 
 - **Fixed:** the default monitor mode fell silent whenever no clip was

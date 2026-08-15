@@ -21,6 +21,37 @@ enum SyncMode: String, Codable, Sendable {
     }
 }
 
+/// What to do with a source's channels before it is heard.
+///
+/// Production sound often carries the dialogue on one channel only. There is
+/// no way to re-route channels per source inside an `AVAudioMix`, so anything
+/// other than `.stereo` is realised by rendering a mono companion file once —
+/// which has the useful property that the preview and the export are fed by
+/// the identical audio rather than by two code paths that might disagree.
+enum ChannelMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// Leave the channels as they are.
+    case stereo
+    /// Average every channel. Halves a signal that sits on one side only.
+    case sumToMono
+    /// Take the left channel alone and centre it — the right choice when the
+    /// dialogue lives on the left, because it keeps the original level.
+    case leftOnly
+    case rightOnly
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .stereo: "Stereo (unverändert)"
+        case .sumToMono: "Summe L+R → Mono"
+        case .leftOnly: "Nur links → Mono"
+        case .rightOnly: "Nur rechts → Mono"
+        }
+    }
+
+    var foldsToMono: Bool { self != .stereo }
+}
+
 /// One audio layer under the picture: the original production mix, the final
 /// mix, or a stem such as SFX-only.
 struct AudioSource: Identifiable, Codable, Hashable {
@@ -38,6 +69,9 @@ struct AudioSource: Identifiable, Codable, Hashable {
     var sampleRate: Double = 48_000
     /// Included when building the preview timeline.
     var isEnabled: Bool = true
+    var channelMode: ChannelMode = .stereo
+    /// The rendered mono companion, when a fold is in force.
+    var foldedPath: String?
 
     var isEmbedded: Bool { path == nil }
 
@@ -46,13 +80,27 @@ struct AudioSource: Identifiable, Codable, Hashable {
         return URL(fileURLWithPath: path)
     }
 
+    var foldedURL: URL? {
+        guard let foldedPath else { return nil }
+        return URL(fileURLWithPath: foldedPath)
+    }
+
+    /// True when a fold is wanted but its file is not on disk — a temporary
+    /// directory can be emptied between launches.
+    var needsFold: Bool {
+        guard channelMode.foldsToMono else { return false }
+        guard let foldedURL else { return true }
+        return !FileManager.default.fileExists(atPath: foldedURL.path)
+    }
+
     var channelDescription: String {
+        if channelMode.foldsToMono { return "Mono (gefaltet)" }
         switch channelCount {
-        case 1: "Mono"
-        case 2: "Stereo"
-        case 6: "5.1"
-        case 8: "7.1"
-        default: "\(channelCount) Kan."
+        case 1: return "Mono"
+        case 2: return "Stereo"
+        case 6: return "5.1"
+        case 8: return "7.1"
+        default: return "\(channelCount) Kan."
         }
     }
 

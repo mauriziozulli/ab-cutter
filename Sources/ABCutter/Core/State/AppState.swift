@@ -28,6 +28,9 @@ final class AppState: ObservableObject {
     private var waveformTasks: [UUID: Task<Void, Never>] = [:]
     private var reloadTask: Task<Void, Never>?
     private var labelTask: Task<Void, Never>?
+    private var foldTasks: [UUID: Task<Void, Never>] = [:]
+    /// True while any channel fold is rendering.
+    @Published private(set) var isFolding = false
 
     var selectedClip: Clip? {
         guard let selectedClipID else { return nil }
@@ -206,6 +209,9 @@ final class AppState: ObservableObject {
         waveforms[source.id] = nil
         waveformTasks[source.id]?.cancel()
         waveformTasks[source.id] = nil
+        foldTasks[source.id]?.cancel()
+        foldTasks[source.id] = nil
+        AudioFolder.discard(source.foldedURL)
         reloadPlayer()
     }
 
@@ -254,6 +260,85 @@ final class AppState: ObservableObject {
 
     func nudgeOffset(_ delta: Double, for source: AudioSource) {
         shiftOffset(delta, forSourceID: source.id)
+    }
+
+    /// Switches a source's channel handling. Anything but stereo has to be
+    /// rendered out first, which is why this reports progress rather than
+    /// simply setting a flag.
+    func setChannelMode(_ mode: ChannelMode, for source: AudioSource) {
+        guard let index = project.audioSources.firstIndex(where: { $0.id == source.id }) else { return }
+        guard project.audioSources[index].channelMode != mode else { return }
+
+        AudioFolder.discard(project.audioSources[index].foldedURL)
+        project.audioSources[index].channelMode = mode
+        project.audioSources[index].foldedPath = nil
+
+        guard mode.foldsToMono else {
+            status = "\(source.name): Stereo wiederhergestellt."
+            waveforms[source.id] = nil
+            reloadPlayer()
+            refreshWaveforms()
+            return
+        }
+        renderFold(forSourceID: source.id)
+    }
+
+    /// Renders the mono companion for one source. Also used after opening a
+    /// project, because the cache lives in the temporary directory.
+    func renderFold(forSourceID id: UUID) {
+        guard let index = project.audioSources.firstIndex(where: { $0.id == id }) else { return }
+        let source = project.audioSources[index]
+        guard source.channelMode.foldsToMono else { return }
+        guard let assetURL = source.url ?? project.videoURL else { return }
+
+        foldTasks[id]?.cancel()
+        isFolding = true
+        status = "\(source.name): \(source.channelMode.title) wird gerechnet …"
+
+        let mode = source.channelMode
+        let name = source.name
+        foldTasks[id] = Task { [weak self] in
+            do {
+                let folded = try await AudioFolder.fold(assetURL: assetURL, mode: mode) { _ in }
+                guard let self, !Task.isCancelled else {
+                    AudioFolder.discard(folded)
+                    return
+                }
+                self.foldTasks[id] = nil
+                self.isFolding = !self.foldTasks.isEmpty
+                guard let slot = self.project.audioSources.firstIndex(where: { $0.id == id }),
+                      self.project.audioSources[slot].channelMode == mode else {
+                    // The choice moved on while this was rendering.
+                    AudioFolder.discard(folded)
+                    return
+                }
+                self.project.audioSources[slot].foldedPath = folded.path
+                self.status = "\(name): \(mode.title) fertig."
+                // The envelope was drawn from the stereo file; redraw it.
+                self.waveforms[id] = nil
+                self.reloadPlayer()
+                self.refreshWaveforms()
+            } catch is CancellationError {
+                self?.foldTasks[id] = nil
+                self?.isFolding = !(self?.foldTasks.isEmpty ?? true)
+            } catch {
+                guard let self else { return }
+                self.foldTasks[id] = nil
+                self.isFolding = !self.foldTasks.isEmpty
+                self.errorMessage = error.localizedDescription
+                if let slot = self.project.audioSources.firstIndex(where: { $0.id == id }) {
+                    self.project.audioSources[slot].channelMode = .stereo
+                }
+            }
+        }
+    }
+
+    /// Re-renders any fold whose cached file has gone — the temporary
+    /// directory is not guaranteed to survive between launches.
+    func restoreMissingFolds() {
+        for source in project.audioSources where source.needsFold {
+            renderFold(forSourceID: source.id)
+        }
     }
 
     func updateSource(_ source: AudioSource) {
@@ -538,7 +623,7 @@ final class AppState: ObservableObject {
     func refreshWaveforms() {
         for source in project.audioSources {
             guard waveforms[source.id] == nil, waveformTasks[source.id] == nil else { continue }
-            let url = source.url ?? project.videoURL
+            let url = source.foldedURL ?? source.url ?? project.videoURL
             guard let url else { continue }
             let id = source.id
             waveformTasks[id] = Task { [weak self] in
@@ -589,6 +674,7 @@ final class AppState: ObservableObject {
             status = "\(url.lastPathComponent) geöffnet."
             reloadPlayer()
             refreshWaveforms()
+            restoreMissingFolds()
         } catch {
             errorMessage = error.localizedDescription
         }

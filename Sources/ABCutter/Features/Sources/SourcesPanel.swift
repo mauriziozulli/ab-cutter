@@ -226,8 +226,12 @@ struct AudioSourceRow: View {
             .font(.caption2)
             .foregroundStyle(.secondary)
 
+            channelControl
+
             if !source.isEmbedded {
                 offsetControls
+                gainControl
+            } else {
                 gainControl
             }
         }
@@ -285,6 +289,34 @@ struct AudioSourceRow: View {
                 }
             }
         )
+    }
+
+    /// Production sound often puts the dialogue on one channel only, and the
+    /// fold is rendered out rather than mixed live — so this is a deliberate
+    /// choice with a wait attached, not a toggle.
+    private var channelControl: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Picker("", selection: Binding(
+                get: { source.channelMode },
+                set: { state.setChannelMode($0, for: source) }
+            )) {
+                ForEach(ChannelMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .help("Liegt der Dialog nur auf einem Kanal, zentriert »Nur links« ihn ohne Pegelverlust — die Summe würde ihn halbieren.")
+
+            if source.channelMode.foldsToMono, source.needsFold {
+                HStack(spacing: 5) {
+                    ProgressView().controlSize(.small)
+                    Text("Mono-Datei wird gerechnet …")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 
     private var gainControl: some View {

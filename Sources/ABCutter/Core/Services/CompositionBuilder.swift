@@ -253,8 +253,12 @@ enum CompositionBuilder {
         into composition: AVMutableComposition,
         window: CMTimeRange
     ) async throws -> AVMutableCompositionTrack? {
+        // A folded source reads from its mono companion, so the preview and
+        // the export are fed by the identical audio.
         let asset: AVURLAsset
-        if let url = source.url {
+        if let folded = source.foldedURL, FileManager.default.fileExists(atPath: folded.path) {
+            asset = AVURLAsset(url: folded, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+        } else if let url = source.url {
             asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
         } else {
             asset = videoAsset
