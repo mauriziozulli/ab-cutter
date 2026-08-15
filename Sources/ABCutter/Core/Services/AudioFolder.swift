@@ -82,7 +82,12 @@ enum AudioFolder {
             throw AudioFoldError.writeFailed("Kein gültiges Mono-Format.")
         }
 
-        let file: AVAudioFile
+        // AVAudioFile has no close(): the header is only finalised when the
+        // object is released. Held in an optional so it can be dropped
+        // explicitly before anybody opens the result — otherwise the caller
+        // can read a file whose frame count is still zero, which plays as
+        // silence rather than as an error.
+        var file: AVAudioFile?
         do {
             file = try AVAudioFile(
                 forWriting: destination,
@@ -159,9 +164,10 @@ enum AudioFolder {
             }
 
             do {
-                try file.write(from: monoBuffer)
+                try file?.write(from: monoBuffer)
             } catch {
                 reader.cancelReading()
+                file = nil
                 try? FileManager.default.removeItem(at: destination)
                 throw AudioFoldError.writeFailed(error.localizedDescription)
             }
@@ -170,9 +176,23 @@ enum AudioFolder {
             progress(min(writtenFrames / expectedFrames, 1))
         }
 
+        let writtenLength = file?.length ?? 0
+        // Release the writer so the container header is finalised on disk.
+        file = nil
+
         if reader.status == .failed {
             try? FileManager.default.removeItem(at: destination)
             throw AudioFoldError.readFailed(reader.error?.localizedDescription ?? "Unbekannter Lesefehler.")
+        }
+
+        // Read the result back before handing it on. A file that decodes to
+        // nothing would otherwise play as silence, which is far harder to
+        // diagnose than a plain failure.
+        let check = AVURLAsset(url: destination, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+        let checkSeconds = CMTimeGetSeconds((try? await check.load(.duration)) ?? .zero)
+        guard writtenLength > 0, checkSeconds.isFinite, checkSeconds > 0.05 else {
+            try? FileManager.default.removeItem(at: destination)
+            throw AudioFoldError.writeFailed("Die Mono-Datei blieb leer.")
         }
 
         progress(1)

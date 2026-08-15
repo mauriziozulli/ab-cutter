@@ -29,6 +29,9 @@ struct TimelineView: View {
         var originStart: Double
         var originEnd: Double
         var originSplit: Double
+        /// A drag that never really moved is a click, and a click on a clip
+        /// should park the playhead at its head so its start is visible.
+        var moved = false
     }
 
     @State private var clipDrag: ClipDrag?
@@ -392,14 +395,23 @@ struct TimelineView: View {
                             player.seek(to: seconds(forX: value.location.x, width: width))
                             return
                         }
+                        // Three points of slop, so a click with a shaky hand
+                        // still counts as a click.
+                        if abs(value.translation.width) > 3 {
+                            self.clipDrag?.moved = true
+                        }
+                        guard clipDrag.moved else { return }
                         let delta = Double(value.translation.width / max(width, 1)) * visibleDuration
                         applyClipDrag(clipDrag, delta: delta)
                     }
                     .onEnded { _ in
-                        if clipDrag != nil {
-                            clipDrag = nil
+                        guard let finished = clipDrag else { return }
+                        clipDrag = nil
+                        if finished.moved {
                             // One rebuild at the end rather than one per pixel.
                             state.applyPlayerSettings()
+                        } else if let clip = state.project.clips.first(where: { $0.id == finished.clipID }) {
+                            state.selectClip(clip)
                         }
                     }
             )

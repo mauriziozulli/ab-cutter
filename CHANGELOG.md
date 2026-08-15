@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.1 — the fold is audible, and a clip click parks the playhead
+
+- **Fixed:** a folded source stayed silent. `AVAudioFile` has no `close()` —
+  its header is finalised only when the object is released — and the caller
+  opened the file straight after writing, so the composition could read a
+  container whose frame count was still zero. The writer is now dropped
+  explicitly before the file is handed on, and the result is read back and
+  rejected if it decodes to nothing, so a failure is visible instead of quiet.
+- A source reports "Mono (gefaltet)" only once its companion exists, making
+  the row an honest indication of what is heard.
+- Clicking a clip in the timeline now moves the playhead to its start, so the
+  cut point is visible at once. A drag still moves the clip; three points of
+  slop separate the two.
+
 ## 0.8.0 — channel folding per source
 
 - A channel mode on every audio layer: stereo as-is, sum L+R, left only, or

@@ -94,7 +94,9 @@ struct AudioSource: Identifiable, Codable, Hashable {
     }
 
     var channelDescription: String {
-        if channelMode.foldsToMono { return "Mono (gefaltet)" }
+        // Only claim the fold once its file is actually on disk, so the row
+        // reports what is being heard rather than what was asked for.
+        if channelMode.foldsToMono, !needsFold { return "Mono (gefaltet)" }
         switch channelCount {
         case 1: return "Mono"
         case 2: return "Stereo"
