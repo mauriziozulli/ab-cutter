@@ -191,8 +191,7 @@ struct Clip: Identifiable, Codable, Hashable {
         if let points = try container.decodeIfPresent([Double].self, forKey: .switchPoints) {
             switchPoints = points
         } else if let legacy = try? decoder.container(keyedBy: LegacyCodingKeys.self),
-                  let split = try? legacy.decodeIfPresent(Double.self, forKey: .splitOverride),
-                  let split {
+                  let split = try? legacy.decode(Double.self, forKey: .splitOverride) {
             switchPoints = [split]
         } else {
             switchPoints = []
