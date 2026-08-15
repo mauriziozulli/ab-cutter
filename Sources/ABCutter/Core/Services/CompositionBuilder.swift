@@ -10,10 +10,10 @@ enum CompositionError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .noVideo: "No video has been loaded."
-        case .noVideoTrack: "The video file has no readable video track."
-        case .trackCreationFailed: "A composition track could not be created."
-        case .emptyClip: "The clip has no length."
+        case .noVideo: "Es ist kein Video geladen."
+        case .noVideoTrack: "Die Videodatei hat keine lesbare Bildspur."
+        case .trackCreationFailed: "Eine Spur konnte nicht angelegt werden."
+        case .emptyClip: "Der Clip hat keine Länge."
         }
     }
 }
@@ -35,7 +35,8 @@ struct ClipComposition {
     var audioMix: AVAudioMix?
     var duration: CMTime
     /// Where the picture and sound flip, measured from the start of the clip.
-    var splitTime: CMTime
+    /// They alternate, so an odd index is a flip back to the before source.
+    var switchTimes: [CMTime]
     var videoNaturalSize: CGSize
     var videoPreferredTransform: CGAffineTransform
     var frameDuration: CMTime
@@ -123,8 +124,8 @@ enum CompositionBuilder {
         ) else { throw CompositionError.trackCreationFailed }
         try videoTrack.insertTimeRange(clipRange, of: sourceVideo, at: .zero)
 
-        // The split is stored in project time; inside the clip it is relative.
-        let splitRelative = CMTimeSubtract(time(clip.splitTime), clipStart)
+        // Switches are stored in project time; inside the clip they are relative.
+        let switchTimes = clip.switches.map { CMTimeSubtract(time($0), clipStart) }
 
         let beforeSource = project.beforeSource(for: clip)
         let afterSource = project.afterSource(for: clip)
@@ -146,11 +147,6 @@ enum CompositionBuilder {
             }
         } else {
             let fade = time(max(project.export.audioCrossfadeMilliseconds, 0) / 1000.0)
-            let half = CMTimeMultiplyByFloat64(fade, multiplier: 0.5)
-            var rampStart = CMTimeSubtract(splitRelative, half)
-            if CMTimeCompare(rampStart, .zero) < 0 { rampStart = .zero }
-            let rampRange = CMTimeRange(start: rampStart, duration: fade)
-            let hasFade = CMTimeCompare(fade, .zero) > 0
 
             if let source = beforeSource,
                let track = try await placeAudio(
@@ -159,15 +155,15 @@ enum CompositionBuilder {
                    into: composition,
                    window: clipRange
                ) {
-                let gain = linearGain(source.gainDB)
-                let params = AVMutableAudioMixInputParameters(track: track)
-                params.setVolume(gain, at: .zero)
-                if hasFade {
-                    params.setVolumeRamp(fromStartVolume: gain, toEndVolume: 0, timeRange: rampRange)
-                } else {
-                    params.setVolume(0, at: splitRelative)
-                }
-                parameters.append(params)
+                parameters.append(
+                    alternatingParameters(
+                        track: track,
+                        gain: linearGain(source.gainDB),
+                        switchTimes: switchTimes,
+                        fade: fade,
+                        startsAudible: true
+                    )
+                )
             }
 
             if let source = afterSource,
@@ -177,15 +173,15 @@ enum CompositionBuilder {
                    into: composition,
                    window: clipRange
                ) {
-                let gain = linearGain(source.gainDB)
-                let params = AVMutableAudioMixInputParameters(track: track)
-                params.setVolume(0, at: .zero)
-                if hasFade {
-                    params.setVolumeRamp(fromStartVolume: 0, toEndVolume: gain, timeRange: rampRange)
-                } else {
-                    params.setVolume(gain, at: splitRelative)
-                }
-                parameters.append(params)
+                parameters.append(
+                    alternatingParameters(
+                        track: track,
+                        gain: linearGain(source.gainDB),
+                        switchTimes: switchTimes,
+                        fade: fade,
+                        startsAudible: false
+                    )
+                )
             }
         }
 
@@ -200,11 +196,47 @@ enum CompositionBuilder {
             composition: composition,
             audioMix: audioMix,
             duration: composition.duration,
-            splitTime: splitRelative,
+            switchTimes: switchTimes,
             videoNaturalSize: try await sourceVideo.load(.naturalSize),
             videoPreferredTransform: try await sourceVideo.load(.preferredTransform),
             frameDuration: try await frameDuration(of: sourceVideo)
         )
+    }
+
+    /// Volume automation for one side of the A/B across any number of
+    /// switches. The two sides are exact mirrors, so a crossfade at each point
+    /// sums to roughly constant loudness.
+    static func alternatingParameters(
+        track: AVAssetTrack,
+        gain: Float,
+        switchTimes: [CMTime],
+        fade: CMTime,
+        startsAudible: Bool
+    ) -> AVMutableAudioMixInputParameters {
+        let params = AVMutableAudioMixInputParameters(track: track)
+        let hasFade = CMTimeCompare(fade, .zero) > 0
+        let half = CMTimeMultiplyByFloat64(fade, multiplier: 0.5)
+
+        var audible = startsAudible
+        params.setVolume(audible ? gain : 0, at: .zero)
+
+        for point in switchTimes {
+            let target: Float = audible ? 0 : gain
+            let from: Float = audible ? gain : 0
+            if hasFade {
+                var rampStart = CMTimeSubtract(point, half)
+                if CMTimeCompare(rampStart, .zero) < 0 { rampStart = .zero }
+                params.setVolumeRamp(
+                    fromStartVolume: from,
+                    toEndVolume: target,
+                    timeRange: CMTimeRange(start: rampStart, duration: fade)
+                )
+            } else {
+                params.setVolume(target, at: point)
+            }
+            audible.toggle()
+        }
+        return params
     }
 
     // MARK: - Audio placement

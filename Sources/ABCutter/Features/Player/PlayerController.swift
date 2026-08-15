@@ -105,14 +105,23 @@ final class PlayerController: ObservableObject {
             playbackLimit = nil
         }
 
-        // An audio mix or video composition swapped mid-flight is only picked
-        // up once the item re-reads its timeline, so nudge it with a seek.
-        let time = player.currentTime()
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        // An audio mix swapped mid-flight is not picked up until the item
+        // re-reads its timeline, and audio is already rendered ahead of the
+        // playhead — so the swap has to be followed by a seek to flush it.
+        // Playback is restarted afterwards, or the nudge would silently stop
+        // the transport every time a control moved.
+        let wasPlaying = isPlaying
+        player.seek(to: player.currentTime(), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            guard wasPlaying, let self else { return }
+            self.player.play()
+        }
     }
 
     // MARK: - Mixing
 
+    /// Volume automation for the preview. It mirrors the exporter's exactly —
+    /// the same alternating ramps at the same points — so what is heard while
+    /// scrubbing is what lands in the file.
     private func makeAudioMix(project: ABProject, clip: Clip?, timeline: TimelineComposition) -> AVAudioMix? {
         guard !timeline.audioTracks.isEmpty else { return nil }
 
@@ -121,40 +130,58 @@ final class PlayerController: ObservableObject {
             return Float(pow(10.0, source.gainDB / 20.0))
         }
 
+        // Resolve the pair even with no clip selected, so the default monitor
+        // mode is never silent just because nothing has been marked yet.
+        let beforeID = clip.flatMap { project.beforeSource(for: $0)?.id }
+            ?? project.defaultBeforeSourceID
+            ?? project.audioSources.first?.id
+        let afterID = clip.flatMap { project.afterSource(for: $0)?.id }
+            ?? project.defaultAfterSourceID
+            ?? beforeID
+
         var parameters: [AVMutableAudioMixInputParameters] = []
 
         switch monitorMode {
         case .single(let soloID):
+            // A solo of a source that has since gone falls back to the A side
+            // rather than muting everything.
+            let audible = timeline.audioTracks[soloID] != nil ? soloID : beforeID
             for (sourceID, track) in timeline.audioTracks {
                 let params = AVMutableAudioMixInputParameters(track: track)
-                params.setVolume(sourceID == soloID ? gain(sourceID) : 0, at: .zero)
+                params.setVolume(sourceID == audible ? gain(sourceID) : 0, at: .zero)
                 parameters.append(params)
             }
 
         case .followSplit:
-            let beforeID = clip.flatMap { project.beforeSource(for: $0)?.id }
-            let afterID = clip.flatMap { project.afterSource(for: $0)?.id }
-            let splitTime = clip.map { CMTime(seconds: $0.splitTime, preferredTimescale: 90_000) }
+            let switchTimes = (clip?.switches ?? []).map {
+                CMTime(seconds: $0, preferredTimescale: 90_000)
+            }
+            let fade = CMTime(
+                seconds: max(project.export.audioCrossfadeMilliseconds, 0) / 1000.0,
+                preferredTimescale: 90_000
+            )
 
             for (sourceID, track) in timeline.audioTracks {
-                let params = AVMutableAudioMixInputParameters(track: track)
-                let isBefore = sourceID == beforeID
-                let isAfter = sourceID == afterID
-
-                if isBefore, beforeID == afterID {
+                if sourceID == beforeID, beforeID == afterID {
+                    // Only one source in play: nothing to switch between.
+                    let params = AVMutableAudioMixInputParameters(track: track)
                     params.setVolume(gain(sourceID), at: .zero)
-                } else if isBefore, let splitTime {
-                    params.setVolume(gain(sourceID), at: .zero)
-                    params.setVolume(0, at: splitTime)
-                } else if isAfter, let splitTime {
-                    params.setVolume(0, at: .zero)
-                    params.setVolume(gain(sourceID), at: splitTime)
-                } else if isBefore {
-                    params.setVolume(gain(sourceID), at: .zero)
+                    parameters.append(params)
+                } else if sourceID == beforeID || sourceID == afterID {
+                    parameters.append(
+                        CompositionBuilder.alternatingParameters(
+                            track: track,
+                            gain: gain(sourceID),
+                            switchTimes: switchTimes,
+                            fade: fade,
+                            startsAudible: sourceID == beforeID
+                        )
+                    )
                 } else {
+                    let params = AVMutableAudioMixInputParameters(track: track)
                     params.setVolume(0, at: .zero)
+                    parameters.append(params)
                 }
-                parameters.append(params)
             }
         }
 
@@ -177,7 +204,9 @@ final class PlayerController: ObservableObject {
             fitMode: project.export.fitMode,
             panX: clip?.panX ?? 0,
             panY: clip?.panY ?? 0,
-            splitTime: CMTime(seconds: clip?.splitTime ?? 0, preferredTimescale: 90_000),
+            switchTimes: (clip?.switches ?? []).map {
+                CMTime(seconds: $0, preferredTimescale: 90_000)
+            },
             beforeLook: clip == nil ? project.export.afterLook : project.export.beforeLook,
             afterLook: project.export.afterLook,
             frameTreatment: clip == nil ? .fullBleed : project.export.frameTreatment,

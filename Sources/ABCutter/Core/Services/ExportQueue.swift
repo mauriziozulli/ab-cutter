@@ -74,8 +74,8 @@ final class ExportQueue: ObservableObject {
         let formats = project.export.formats
         guard !clips.isEmpty, !formats.isEmpty else {
             summary = clips.isEmpty
-                ? "No clips are marked for export."
-                : "No output format is selected."
+                ? "Kein Clip ist für den Export markiert."
+                : "Es ist kein Ausgabeformat gewählt."
             return
         }
 
@@ -112,12 +112,12 @@ final class ExportQueue: ObservableObject {
 
         for index in jobs.indices {
             if Task.isCancelled {
-                jobs[index].state = .failed("Cancelled")
+                jobs[index].state = .failed("Abgebrochen")
                 continue
             }
 
             guard let clip = project.clips.first(where: { $0.id == jobs[index].clipID }) else {
-                jobs[index].state = .failed("The clip no longer exists.")
+                jobs[index].state = .failed("Der Clip existiert nicht mehr.")
                 continue
             }
 
@@ -155,15 +155,15 @@ final class ExportQueue: ObservableObject {
                 jobs[index].state = .finished(jobs[index].outputURL)
             } catch {
                 jobs[index].state = Task.isCancelled
-                    ? .failed("Cancelled")
+                    ? .failed("Abgebrochen")
                     : .failed(error.localizedDescription)
             }
         }
 
         if failedCount == 0 {
-            summary = "Exported \(finishedCount) file\(finishedCount == 1 ? "" : "s")."
+            summary = "\(finishedCount) Datei\(finishedCount == 1 ? "" : "en") exportiert."
         } else {
-            summary = "Exported \(finishedCount), failed \(failedCount)."
+            summary = "\(finishedCount) exportiert, \(failedCount) fehlgeschlagen."
         }
     }
 

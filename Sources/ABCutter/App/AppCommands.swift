@@ -15,108 +15,122 @@ struct AppCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button("Open Video…") { state.presentVideoPicker() }
+            Button("Video öffnen …") { state.presentVideoPicker() }
                 .keyboardShortcut("o", modifiers: .command)
-            Button("Add Audio…") { state.presentAudioPicker() }
+            Button("Ton hinzufügen …") { state.presentAudioPicker() }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
                 .disabled(!state.project.hasVideo)
 
             Divider()
 
-            Button("Open Project…") { state.openProject() }
+            Button("Projekt öffnen …") { state.openProject() }
                 .keyboardShortcut("o", modifiers: [.command, .option])
         }
 
         CommandGroup(replacing: .saveItem) {
-            Button("Save Project…") { state.saveProject() }
+            Button("Projekt sichern …") { state.saveProject() }
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(!state.project.hasVideo)
 
             Divider()
 
-            Button("Choose Output Folder…") { state.chooseOutputFolder() }
+            Button("Zielordner wählen …") { state.chooseOutputFolder() }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
-            Button("Export Batch") { state.startExport() }
+            Button("Stapel exportieren") { state.startExport() }
                 .keyboardShortcut("e", modifiers: .command)
                 .disabled(!state.project.hasVideo || state.exportQueue.isRunning)
-            Button("Grab Cover Frame") { state.grabStill() }
+            Button("Titelbild greifen") { state.grabStill() }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
                 .disabled(!state.project.hasVideo)
         }
 
         CommandMenu("Clip") {
-            Button("New Clip at Playhead") { state.addClipAtPlayhead() }
+            Button("Neuer Clip am Abspielkopf") { state.addClipAtPlayhead() }
                 .keyboardShortcut("n", modifiers: .command)
                 .disabled(!state.project.hasVideo)
 
             Divider()
 
-            Button("Mark In") { state.markIn() }
+            Button("In setzen") { state.markIn() }
                 .keyboardShortcut("[", modifiers: .command)
                 .disabled(!state.hasSelectedClip)
-            Button("Mark Out") { state.markOut() }
+            Button("Out setzen") { state.markOut() }
                 .keyboardShortcut("]", modifiers: .command)
                 .disabled(!state.hasSelectedClip)
-            Button("Split Here") { state.setSplitToPlayhead() }
+            Button("A/B-Wechsel hier einfügen") { state.addSwitchAtPlayhead() }
                 .keyboardShortcut("\\", modifiers: .command)
                 .disabled(!state.hasSelectedClip)
-            Button("Split at Middle") { state.resetSplitToMiddle() }
+            Button("Nur ein Wechsel hier") { state.setSplitToPlayhead() }
+                .keyboardShortcut("\\", modifiers: [.command, .shift])
+                .disabled(!state.hasSelectedClip)
+            Button("Nächsten Wechsel entfernen") { state.removeSwitchNearestPlayhead() }
+                .disabled(!state.hasSelectedClip)
+            Button("Auf einen Wechsel in der Mitte") { state.resetSplitToMiddle() }
                 .disabled(!state.hasSelectedClip)
 
             Divider()
 
-            Button("Snap to House Length") { state.snapSelectedClipToHouseLength() }
+            Button("Nur A abhören") { state.monitorOnlySide(before: true) }
+                .keyboardShortcut("1", modifiers: [.command, .shift])
+                .disabled(state.project.audioSources.isEmpty)
+            Button("Nur B abhören") { state.monitorOnlySide(before: false) }
+                .keyboardShortcut("2", modifiers: [.command, .shift])
+                .disabled(state.project.audioSources.isEmpty)
+
+            Divider()
+
+            Button("Auf Hauslänge setzen") { state.snapSelectedClipToHouseLength() }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
                 .disabled(!state.hasSelectedClip)
-            Button("Snap All Clips") { state.applyDefaultLengthToAllClips() }
+            Button("Alle Clips auf Hauslänge") { state.applyDefaultLengthToAllClips() }
                 .disabled(state.project.clips.isEmpty)
 
             Divider()
 
-            Button("Select Previous Clip") { state.selectAdjacentClip(offset: -1) }
+            Button("Vorheriger Clip") { state.selectAdjacentClip(offset: -1) }
                 .keyboardShortcut(.upArrow, modifiers: [.command, .option])
                 .disabled(state.project.clips.isEmpty)
-            Button("Select Next Clip") { state.selectAdjacentClip(offset: 1) }
+            Button("Nächster Clip") { state.selectAdjacentClip(offset: 1) }
                 .keyboardShortcut(.downArrow, modifiers: [.command, .option])
                 .disabled(state.project.clips.isEmpty)
 
             Divider()
 
-            Button("Delete Clip") { state.deleteSelectedClip() }
+            Button("Clip löschen") { state.deleteSelectedClip() }
                 .keyboardShortcut(.delete, modifiers: .command)
                 .disabled(!state.hasSelectedClip)
         }
 
-        CommandMenu("Playback") {
-            Button(state.player.isPlaying ? "Pause" : "Play") { state.player.togglePlay() }
+        CommandMenu("Wiedergabe") {
+            Button(state.player.isPlaying ? "Pause" : "Abspielen") { state.player.togglePlay() }
                 .keyboardShortcut("k", modifiers: .command)
                 .disabled(!state.project.hasVideo)
 
             Divider()
 
-            Button("Back One Frame") { state.player.step(frames: -1, frameRate: state.project.frameRate) }
+            Button("Ein Bild zurück") { state.player.step(frames: -1, frameRate: state.project.frameRate) }
                 .keyboardShortcut("j", modifiers: .command)
-            Button("Forward One Frame") { state.player.step(frames: 1, frameRate: state.project.frameRate) }
+            Button("Ein Bild vor") { state.player.step(frames: 1, frameRate: state.project.frameRate) }
                 .keyboardShortcut("l", modifiers: .command)
-            Button("Back Ten Frames") { state.player.step(frames: -10, frameRate: state.project.frameRate) }
+            Button("Zehn Bilder zurück") { state.player.step(frames: -10, frameRate: state.project.frameRate) }
                 .keyboardShortcut("j", modifiers: [.command, .shift])
-            Button("Forward Ten Frames") { state.player.step(frames: 10, frameRate: state.project.frameRate) }
+            Button("Zehn Bilder vor") { state.player.step(frames: 10, frameRate: state.project.frameRate) }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
 
             Divider()
 
-            Button("Go to Clip Start") { state.goToSelectedClipStart() }
+            Button("Zum Clip-Anfang") { state.goToSelectedClipStart() }
                 .keyboardShortcut("[", modifiers: [.command, .option])
                 .disabled(!state.hasSelectedClip)
-            Button("Go to A/B Switch") { state.goToSelectedClipSplit() }
+            Button("Zum ersten A/B-Wechsel") { state.goToSelectedClipSplit() }
                 .disabled(!state.hasSelectedClip)
-            Button("Go to Clip End") { state.goToSelectedClipEnd() }
+            Button("Zum Clip-Ende") { state.goToSelectedClipEnd() }
                 .keyboardShortcut("]", modifiers: [.command, .option])
                 .disabled(!state.hasSelectedClip)
 
             Divider()
 
-            Toggle("Loop Inside Clip", isOn: Binding(
+            Toggle("Im Clip bleiben", isOn: Binding(
                 get: { state.player.limitToClip },
                 set: {
                     state.player.limitToClip = $0
@@ -125,21 +139,21 @@ struct AppCommands: Commands {
             ))
         }
 
-        CommandMenu("View") {
-            Button("Full Frame") { state.setPreviewFormat(nil) }
+        CommandMenu("Ansicht") {
+            Button("Ganzes Bild") { state.setPreviewFormat(nil) }
                 .keyboardShortcut("0", modifiers: .command)
             ForEach(Array(SocialFormat.allCases.enumerated()), id: \.element) { index, format in
-                Button("Preview \(format.title)") { state.setPreviewFormat(format) }
+                Button("Vorschau \(format.title)") { state.setPreviewFormat(format) }
                     .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
             }
 
             Divider()
 
-            Button("Zoom Timeline In") { state.zoomTimeline(by: 1.6) }
+            Button("Zeitleiste vergrössern") { state.zoomTimeline(by: 1.6) }
                 .keyboardShortcut("=", modifiers: .command)
-            Button("Zoom Timeline Out") { state.zoomTimeline(by: 1 / 1.6) }
+            Button("Zeitleiste verkleinern") { state.zoomTimeline(by: 1 / 1.6) }
                 .keyboardShortcut("-", modifiers: .command)
-            Button("Fit Whole Film") { state.zoom = 1 }
+            Button("Ganzer Film") { state.zoom = 1 }
 
             Divider()
 

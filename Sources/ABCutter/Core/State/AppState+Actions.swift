@@ -17,7 +17,7 @@ enum InspectorTab: String, CaseIterable, Identifiable {
         switch self {
         case .clips: "Clips"
         case .look: "Look"
-        case .cover: "Cover"
+        case .cover: "Titelbild"
         case .export: "Export"
         }
     }
@@ -103,6 +103,31 @@ extension AppState {
         player.seek(to: clip.end)
     }
 
+    /// Which source the A or B side resolves to right now, following the
+    /// clip's override and then the project default.
+    func resolvedSideID(before: Bool) -> UUID? {
+        if let clip = selectedClip {
+            return before ? project.beforeSource(for: clip)?.id : project.afterSource(for: clip)?.id
+        }
+        return before
+            ? (project.defaultBeforeSourceID ?? project.audioSources.first?.id)
+            : (project.defaultAfterSourceID ?? project.audioSources.first?.id)
+    }
+
+    /// Solos one side of the A/B outright, or returns to following the
+    /// switches when that side is already soloed. A straight comparison is
+    /// what an ear wants, and it is also the quickest way to tell whether a
+    /// source is audible at all.
+    func monitorOnlySide(before: Bool) {
+        guard let id = resolvedSideID(before: before) else { return }
+        if case .single(let current) = player.monitorMode, current == id {
+            player.monitorMode = .followSplit
+        } else {
+            player.monitorMode = .single(id)
+        }
+        applyPlayerSettings()
+    }
+
     func setPreviewFormat(_ format: SocialFormat?) {
         player.previewFormat = format
         applyPlayerSettings()
@@ -120,9 +145,9 @@ extension AppState {
     var summaryLine: String {
         guard project.hasVideo else { return status }
         let enabled = project.clips.filter { $0.isEnabled && $0.duration > 0 }.count
-        var parts = ["\(project.clips.count) clip\(project.clips.count == 1 ? "" : "s")"]
-        if enabled != project.clips.count { parts.append("\(enabled) enabled") }
-        parts.append("\(project.audioSources.count) audio")
+        var parts = ["\(project.clips.count) Clip\(project.clips.count == 1 ? "" : "s")"]
+        if enabled != project.clips.count { parts.append("\(enabled) aktiv") }
+        parts.append("\(project.audioSources.count) Tonspuren")
         if let folder = project.export.outputFolderURL {
             parts.append("→ \(folder.lastPathComponent)")
         }

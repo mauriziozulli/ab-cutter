@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.0 — live A/B fixed, German interface, several switches per clip
+
+- **Fixed:** the default monitor mode fell silent whenever no clip was
+  selected, because the A and B sides resolved to nothing and every track was
+  muted. Both sides now fall back to the project defaults.
+- **Fixed:** the preview switched with a hard volume step while the export
+  crossfaded, and the seek that flushes a swapped audio mix stopped playback.
+  The preview now uses the exporter's own ramp code and resumes the transport.
+- Manual A/B: "Nur A" and "Nur B" solo one side outright, ⇧⌘1 and ⇧⌘2. This
+  is the comparison an ear actually wants, and the quickest way to tell
+  whether both sources are audible at all.
+- A clip can hold any number of A/B switches, not just one. They simply
+  alternate — A, B, A, B — so a rhythm of comparisons is a plain list of times
+  with no per-segment state. ⌘\ adds one at the playhead; the timeline paints
+  the bands and every mark can be dragged. Old projects with a single split
+  still open.
+- The interface is in German throughout.
+
 ## 0.6.0 — a proper menu bar and a tabbed inspector
 
 - A real macOS menu bar: File, Clip, Playback and View, with every action the

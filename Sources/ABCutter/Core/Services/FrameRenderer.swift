@@ -12,8 +12,9 @@ struct RenderPlan {
     var fitMode: FitMode
     var panX: Double
     var panY: Double
-    /// Measured from the start of the clip.
-    var splitTime: CMTime
+    /// Measured from the start of the clip. The picture alternates between the
+    /// before and after treatment at each of these.
+    var switchTimes: [CMTime]
     var beforeLook: LookStyle
     var afterLook: LookStyle
     var frameTreatment: FrameTreatment
@@ -30,7 +31,7 @@ struct RenderPlan {
 /// Turns a decoded source frame into a finished social-format frame.
 enum FrameRenderer {
     static func render(_ source: CIImage, at time: CMTime, plan: RenderPlan) -> CIImage {
-        let isBefore = CMTimeCompare(time, plan.splitTime) < 0
+        let isBefore = Self.isBeforeSegment(at: time, switches: plan.switchTimes)
         let look = isBefore ? plan.beforeLook : plan.afterLook
         let overlay = isBefore ? plan.beforeOverlay : plan.afterOverlay
 
@@ -71,6 +72,14 @@ enum FrameRenderer {
             output = CIImage(cgImage: overlay).composited(over: output)
         }
         return output.cropped(to: target)
+    }
+
+    /// Segments alternate, so the side is simply the parity of how many
+    /// switches the playhead has passed.
+    static func isBeforeSegment(at time: CMTime, switches: [CMTime]) -> Bool {
+        var crossed = 0
+        for point in switches where CMTimeCompare(time, point) >= 0 { crossed += 1 }
+        return crossed.isMultiple(of: 2)
     }
 
     // MARK: - Layout

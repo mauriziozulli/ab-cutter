@@ -12,11 +12,11 @@ enum ExportError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .readerSetupFailed(let detail): "The clip could not be prepared for reading. \(detail)"
-        case .writerSetupFailed(let detail): "The output file could not be created. \(detail)"
-        case .readFailed(let detail): "Reading the clip failed. \(detail)"
-        case .writeFailed(let detail): "Writing the clip failed. \(detail)"
-        case .cancelled: "Export cancelled."
+        case .readerSetupFailed(let detail): "Der Clip konnte nicht zum Lesen vorbereitet werden. \(detail)"
+        case .writerSetupFailed(let detail): "Die Ausgabedatei konnte nicht angelegt werden. \(detail)"
+        case .readFailed(let detail): "Das Lesen des Clips ist fehlgeschlagen. \(detail)"
+        case .writeFailed(let detail): "Das Schreiben des Clips ist fehlgeschlagen. \(detail)"
+        case .cancelled: "Export abgebrochen."
         }
     }
 }
@@ -51,7 +51,7 @@ enum ClipExporter {
             fitMode: request.settings.fitMode,
             panX: request.clip.panX,
             panY: request.clip.panY,
-            splitTime: clipComposition.splitTime,
+            switchTimes: clipComposition.switchTimes,
             beforeLook: request.settings.beforeLook,
             afterLook: request.settings.afterLook,
             frameTreatment: request.settings.frameTreatment,
@@ -105,7 +105,7 @@ enum ClipExporter {
             )
         }
         guard let started else {
-            throw ExportError.readerSetupFailed("The clip could not be decoded.")
+            throw ExportError.readerSetupFailed("Der Clip konnte nicht dekodiert werden.")
         }
 
         let reader = started.reader
@@ -138,7 +138,7 @@ enum ClipExporter {
         videoInput.expectsMediaDataInRealTime = false
         guard writer.canAdd(videoInput) else {
             reader.cancelReading()
-            throw ExportError.writerSetupFailed("The video encoder rejected the requested settings.")
+            throw ExportError.writerSetupFailed("Der Video-Encoder hat die Einstellungen abgelehnt.")
         }
         writer.add(videoInput)
 
@@ -154,7 +154,7 @@ enum ClipExporter {
 
         guard writer.startWriting() else {
             reader.cancelReading()
-            throw ExportError.writerSetupFailed(writer.error?.localizedDescription ?? "Unknown writer error.")
+            throw ExportError.writerSetupFailed(writer.error?.localizedDescription ?? "Unbekannter Schreibfehler.")
         }
         writer.startSession(atSourceTime: .zero)
 
@@ -193,14 +193,14 @@ enum ClipExporter {
         if reader.status == .failed {
             writer.cancelWriting()
             try? FileManager.default.removeItem(at: request.outputURL)
-            throw ExportError.readFailed(reader.error?.localizedDescription ?? "Unknown reader error.")
+            throw ExportError.readFailed(reader.error?.localizedDescription ?? "Unbekannter Lesefehler.")
         }
 
         await writer.finishWriting()
 
         guard writer.status == .completed else {
             try? FileManager.default.removeItem(at: request.outputURL)
-            throw ExportError.writeFailed(writer.error?.localizedDescription ?? "Unknown writer error.")
+            throw ExportError.writeFailed(writer.error?.localizedDescription ?? "Unbekannter Schreibfehler.")
         }
 
         reader.cancelReading()
@@ -231,7 +231,7 @@ enum ClipExporter {
         videoOutput.videoComposition = videoComposition
         videoOutput.alwaysCopiesSampleData = false
         guard reader.canAdd(videoOutput) else {
-            throw ExportError.readerSetupFailed("The video compositor could not be attached.")
+            throw ExportError.readerSetupFailed("Der Video-Compositor konnte nicht angehängt werden.")
         }
         reader.add(videoOutput)
 
@@ -244,14 +244,14 @@ enum ClipExporter {
             output.audioMix = audioMix
             output.alwaysCopiesSampleData = false
             guard reader.canAdd(output) else {
-                throw ExportError.readerSetupFailed("The audio mixer could not be attached.")
+                throw ExportError.readerSetupFailed("Der Audio-Mixer konnte nicht angehängt werden.")
             }
             reader.add(output)
             audioOutput = output
         }
 
         guard reader.startReading() else {
-            throw ExportError.readerSetupFailed(reader.error?.localizedDescription ?? "Unknown reader error.")
+            throw ExportError.readerSetupFailed(reader.error?.localizedDescription ?? "Unbekannter Lesefehler.")
         }
 
         return (reader, videoOutput, audioOutput)

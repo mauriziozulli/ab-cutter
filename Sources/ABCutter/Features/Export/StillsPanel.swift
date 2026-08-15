@@ -17,19 +17,19 @@ struct StillsPanel: View {
                 filters
                 outputRow
             } else {
-                Text("Park the playhead on the frame you want as the cover, then grab it.")
+                Text("Abspielkopf auf das gewünschte Bild stellen und greifen.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .abCard()
-        .abSection("Cover image")
+        .abSection("Titelbild")
     }
 
     private var grabRow: some View {
         HStack(spacing: 6) {
-            Button("Grab frame at playhead") { state.grabStill() }
+            Button("Bild am Abspielkopf greifen") { state.grabStill() }
                 .controlSize(.small)
                 .disabled(!state.project.hasVideo)
             Spacer()
@@ -57,7 +57,7 @@ struct StillsPanel: View {
                     )
                 Spacer()
             }
-            Text("Preview at \(state.stillPreviewFormat.title) · \(state.stillPreviewFormat.subtitle)")
+            Text("Vorschau in \(state.stillPreviewFormat.title) · \(state.stillPreviewFormat.subtitle)")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -66,11 +66,11 @@ struct StillsPanel: View {
 
     private var textFields: some View {
         VStack(alignment: .leading, spacing: 6) {
-            TextField("Headline", text: state.stillBinding(\.headline), axis: .vertical)
+            TextField("Überschrift", text: state.stillBinding(\.headline), axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
                 .lineLimit(1...3)
-            TextField("Second line — direction, credits", text: state.stillBinding(\.subline))
+            TextField("Zweite Zeile — Regie, Credits", text: state.stillBinding(\.subline))
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
 
@@ -87,18 +87,18 @@ struct StillsPanel: View {
     private var filters: some View {
         VStack(alignment: .leading, spacing: 6) {
             slider(
-                label: "Blur",
+                label: "Weichzeichnen",
                 value: state.stillBinding(\.blurStrength),
                 range: 0...100,
                 readout: "\(Int(state.project.stills.blurStrength))"
             )
             slider(
-                label: "Darken",
+                label: "Abdunkeln",
                 value: state.stillBinding(\.dimStrength),
                 range: 0...0.8,
                 readout: "\(Int(state.project.stills.dimStrength * 100)) %"
             )
-            Text("Softening the picture is what gives the type somewhere to sit — the tint is then read off the blurred backdrop, not the raw frame.")
+            Text("Das Weichzeichnen schafft erst den Platz für den Text — die Farbe wird danach aus dem unscharfen Hintergrund gelesen, nicht aus dem Rohbild.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -113,7 +113,7 @@ struct StillsPanel: View {
         HStack(spacing: 6) {
             Text(label)
                 .font(.caption)
-                .frame(width: 52, alignment: .leading)
+                .frame(width: 84, alignment: .leading)
             Slider(value: value, in: range)
                 .controlSize(.mini)
             Text(readout)
@@ -125,21 +125,21 @@ struct StillsPanel: View {
 
     private var outputRow: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Toggle("Full-resolution frame", isOn: state.stillBinding(\.saveFullFrame))
+            Toggle("Bild in voller Auflösung", isOn: state.stillBinding(\.saveFullFrame))
                 .toggleStyle(.checkbox)
                 .font(.caption)
-            Toggle("Title card per output format", isOn: state.stillBinding(\.saveTitleCards))
+            Toggle("Titelbild je Ausgabeformat", isOn: state.stillBinding(\.saveTitleCards))
                 .toggleStyle(.checkbox)
                 .font(.caption)
 
-            Picker("File", selection: state.stillBinding(\.fileFormat)) {
+            Picker("Datei", selection: state.stillBinding(\.fileFormat)) {
                 ForEach(StillFileFormat.allCases) { format in
                     Text(format.title).tag(format)
                 }
             }
             .controlSize(.small)
 
-            Button("Save images") { state.saveStills() }
+            Button("Bilder sichern") { state.saveStills() }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .disabled(!state.project.stills.saveFullFrame && !state.project.stills.saveTitleCards)

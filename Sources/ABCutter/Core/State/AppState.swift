@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 final class AppState: ObservableObject {
     @Published var project = ABProject()
     @Published var selectedClipID: UUID?
-    @Published var status: String = "Load a video to begin."
+    @Published var status: String = "Zum Start ein Video laden."
     @Published var errorMessage: String?
     @Published private(set) var isLoadingMedia = false
     /// Peak envelopes for the timeline, keyed by audio source.
@@ -50,21 +50,21 @@ final class AppState: ObservableObject {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.allowedContentTypes = [.movie, .video, .quickTimeMovie, .mpeg4Movie]
-        panel.message = "Choose the finished film."
+        panel.message = "Fertigen Film wählen."
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task { await loadVideo(url: url) }
     }
 
     func presentAudioPicker() {
         guard project.hasVideo else {
-            errorMessage = "Load the video first, then add audio to sit under it."
+            errorMessage = "Erst das Video laden, dann Ton darunterlegen."
             return
         }
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         panel.allowedContentTypes = [.audio, .wav, .aiff, .mp3, .mpeg4Audio, .movie]
-        panel.message = "Choose mixes or stems to lay under the picture."
+        panel.message = "Mixe oder Stems wählen, die unters Bild sollen."
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls
         Task { await addAudio(urls: urls) }
@@ -72,7 +72,7 @@ final class AppState: ObservableObject {
 
     func loadVideo(url: URL) async {
         isLoadingMedia = true
-        status = "Reading \(url.lastPathComponent)…"
+        status = "Lese \(url.lastPathComponent) …"
         defer { isLoadingMedia = false }
 
         do {
@@ -97,7 +97,7 @@ final class AppState: ObservableObject {
 
             if probe.hasAudio {
                 var embedded = AudioSource(
-                    name: "Original (in video)",
+                    name: "Original (im Video)",
                     path: nil,
                     offsetSeconds: 0,
                     syncMode: .fileStart,
@@ -121,9 +121,9 @@ final class AppState: ObservableObject {
 
             let timecodeNote: String
             if let timecode = probe.timecode {
-                timecodeNote = "start \(Timecode.string(fromSeconds: timecode.seconds, rate: project.frameRate, dropFrame: project.dropFrame)) from \(timecode.origin.title.lowercased())"
+                timecodeNote = "Start \(Timecode.string(fromSeconds: timecode.seconds, rate: project.frameRate, dropFrame: project.dropFrame)) aus \(timecode.origin.title)"
             } else {
-                timecodeNote = "no timecode — audio will sync from the file start"
+                timecodeNote = "kein Timecode — Ton wird ab Dateianfang gelegt"
             }
             status = "\(url.lastPathComponent) · \(Int(probe.naturalSize.width))×\(Int(probe.naturalSize.height)) · \(project.frameRate.title) · \(timecodeNote)"
 
@@ -131,7 +131,7 @@ final class AppState: ObservableObject {
             refreshWaveforms()
         } catch {
             errorMessage = error.localizedDescription
-            status = "The video could not be read."
+            status = "Das Video konnte nicht gelesen werden."
         }
     }
 
@@ -184,8 +184,8 @@ final class AppState: ObservableObject {
         }
 
         status = syncedByTimecode > 0
-            ? "Added \(added) source\(added == 1 ? "" : "s") — \(syncedByTimecode) synced by timecode."
-            : "Added \(added) source\(added == 1 ? "" : "s") — no timecode match, sync by hand."
+            ? "\(added) Spur\(added == 1 ? "" : "en") hinzugefügt — \(syncedByTimecode) per Timecode synchronisiert."
+            : "\(added) Spur\(added == 1 ? "" : "en") hinzugefügt — kein Timecode, bitte von Hand syncen."
 
         await player.reload(project: project, selectedClip: selectedClip)
         refreshWaveforms()
@@ -214,7 +214,7 @@ final class AppState: ObservableObject {
     /// Re-derives every offset from embedded timecode where both sides have it.
     func autoSyncAll() {
         guard let videoStart = project.videoTimecodeStartSeconds else {
-            errorMessage = "The video carries no timecode, so there is nothing to sync against. Line the audio up by hand."
+            errorMessage = "Das Video trägt keinen Timecode — es gibt nichts, wogegen synchronisiert werden könnte. Bitte von Hand ausrichten."
             return
         }
 
@@ -231,8 +231,8 @@ final class AppState: ObservableObject {
         }
 
         status = synced > 0
-            ? "Synced \(synced) source\(synced == 1 ? "" : "s") by timecode."
-            : "No audio source carries a timecode stamp."
+            ? "\(synced) Spur\(synced == 1 ? "" : "en") per Timecode synchronisiert."
+            : "Keine Tonspur trägt einen Timecode."
         reloadPlayer()
     }
 
@@ -290,9 +290,15 @@ final class AppState: ObservableObject {
         let range = fittedRange(start: start, length: length)
         updated.start = range.start
         updated.end = range.end
-        if updated.splitOverride != nil {
-            updated.splitOverride = range.start + fraction * (range.end - range.start)
+        if !clip.switchPoints.isEmpty {
+            // Carry the switches proportionally, so a re-length never moves a
+            // reveal relative to the material around it.
+            let oldSpan = max(clip.duration, 0.001)
+            updated.switchPoints = clip.switchPoints.map {
+                range.start + (($0 - clip.start) / oldSpan) * (range.end - range.start)
+            }
         }
+        _ = fraction
         return updated
     }
 
@@ -316,7 +322,7 @@ final class AppState: ObservableObject {
         for index in project.clips.indices {
             project.clips[index] = reshaped(project.clips[index], start: project.clips[index].start, length: length)
         }
-        status = "Set \(project.clips.count) clip\(project.clips.count == 1 ? "" : "s") to \(formattedLength(length))."
+        status = "\(project.clips.count) Clip\(project.clips.count == 1 ? "" : "s") auf \(formattedLength(length)) gesetzt."
         player.apply(project: project, selectedClip: selectedClip)
     }
 
@@ -399,8 +405,8 @@ final class AppState: ObservableObject {
         let shift = range.start - clip.start
         project.clips[index].start = range.start
         project.clips[index].end = range.end
-        if let override = clip.splitOverride {
-            project.clips[index].splitOverride = override + shift
+        if !clip.switchPoints.isEmpty {
+            project.clips[index].switchPoints = clip.switchPoints.map { $0 + shift }
         }
     }
 
@@ -423,19 +429,27 @@ final class AppState: ObservableObject {
 
         project.clips[index].start = max(begin, 0)
         project.clips[index].end = min(finish, limit)
-        if let override = project.clips[index].splitOverride {
-            project.clips[index].splitOverride = min(
-                max(override, project.clips[index].start),
-                project.clips[index].end
-            )
+        if !project.clips[index].switchPoints.isEmpty {
+            let lower = project.clips[index].start
+            let upper = project.clips[index].end
+            project.clips[index].switchPoints = project.clips[index].switchPoints
+                .map { min(max($0, lower), upper) }
         }
     }
 
     /// Moves one clip's A/B switch directly.
-    func setSplit(_ id: UUID, to seconds: Double) {
+    /// Moves the switch nearest `original` to `seconds` — what a drag on a
+    /// switch mark on the timeline does.
+    func moveSwitch(_ id: UUID, from original: Double, to seconds: Double) {
         guard let index = project.clips.firstIndex(where: { $0.id == id }) else { return }
-        let clip = project.clips[index]
-        project.clips[index].splitOverride = min(max(seconds, clip.start), clip.end)
+        var clip = project.clips[index]
+        var points = clip.switches
+        guard let nearest = points.indices.min(by: {
+            abs(points[$0] - original) < abs(points[$1] - original)
+        }) else { return }
+        points[nearest] = min(max(seconds, clip.start), clip.end)
+        clip.switchPoints = points.sorted()
+        project.clips[index] = clip
     }
 
     /// Changes one clip's own length, anchored on its in point.
@@ -443,15 +457,34 @@ final class AppState: ObservableObject {
         updateClip(reshaped(clip, start: clip.start, length: length))
     }
 
+    /// Adds an A/B switch at the playhead. The sides simply alternate, so any
+    /// number of these builds an A/B/A/B rhythm without further bookkeeping.
+    func addSwitchAtPlayhead() {
+        guard var clip = selectedClip else { return }
+        guard player.currentTime > clip.start, player.currentTime < clip.end else {
+            errorMessage = "Der Abspielkopf steht ausserhalb des Clips."
+            return
+        }
+        clip.addSwitch(at: player.currentTime)
+        updateClip(clip)
+    }
+
+    /// Replaces every switch with a single one at the playhead.
     func setSplitToPlayhead() {
         guard var clip = selectedClip else { return }
-        clip.splitOverride = min(max(player.currentTime, clip.start), clip.end)
+        clip.switchPoints = [min(max(player.currentTime, clip.start), clip.end)]
+        updateClip(clip)
+    }
+
+    func removeSwitchNearestPlayhead() {
+        guard var clip = selectedClip, clip.switches.count > 1 else { return }
+        clip.removeSwitch(nearest: player.currentTime)
         updateClip(clip)
     }
 
     func resetSplitToMiddle() {
         guard var clip = selectedClip else { return }
-        clip.splitOverride = nil
+        clip.resetSwitchesToMiddle()
         updateClip(clip)
     }
 
@@ -537,7 +570,7 @@ final class AppState: ObservableObject {
         do {
             try ProjectStore.save(project, to: url)
             projectURL = url
-            status = "Saved \(url.lastPathComponent)."
+            status = "\(url.lastPathComponent) gespeichert."
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -555,7 +588,7 @@ final class AppState: ObservableObject {
             projectURL = url
             selectedClipID = loaded.clips.first?.id
             waveforms = [:]
-            status = "Opened \(url.lastPathComponent)."
+            status = "\(url.lastPathComponent) geöffnet."
             reloadPlayer()
             refreshWaveforms()
         } catch {
@@ -578,7 +611,7 @@ final class AppState: ObservableObject {
 
     func grabStill() {
         guard let url = project.videoURL else {
-            errorMessage = "Load a video first."
+            errorMessage = "Zuerst ein Video laden."
             return
         }
         let seconds = player.currentTime
@@ -593,7 +626,7 @@ final class AppState: ObservableObject {
                 }
                 self.grabbedFrame = frame
                 self.grabbedAtSeconds = seconds
-                self.status = "Grabbed \(frame.width)×\(frame.height) at \(Timecode.clockString(fromSeconds: seconds))."
+                self.status = "Standbild \(frame.width)×\(frame.height) bei \(Timecode.clockString(fromSeconds: seconds)) gegriffen."
                 self.inspectorTab = .cover
                 self.refreshTitleCardPreview()
             } catch {
@@ -624,7 +657,7 @@ final class AppState: ObservableObject {
     /// Writes the full-resolution frame and a title card per selected format.
     func saveStills() {
         guard let frame = grabbedFrame else {
-            errorMessage = "Grab a frame first."
+            errorMessage = "Zuerst ein Standbild greifen."
             return
         }
         guard let folder = project.export.outputFolderURL else {
@@ -675,10 +708,10 @@ final class AppState: ObservableObject {
         }
 
         guard written > 0 else {
-            errorMessage = "Nothing was selected to save."
+            errorMessage = "Es ist nichts zum Speichern ausgewählt."
             return
         }
-        status = "Wrote \(written) image\(written == 1 ? "" : "s") to \(folder.lastPathComponent)."
+        status = "\(written) Bild\(written == 1 ? "" : "er") in \(folder.lastPathComponent) geschrieben."
         exportQueue.revealInFinder(folder)
     }
 
@@ -689,14 +722,14 @@ final class AppState: ObservableObject {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
-        panel.message = "Choose where the social cuts should land."
+        panel.message = "Zielordner für die Social-Clips wählen."
         guard panel.runModal() == .OK, let url = panel.url else { return }
         project.export.outputFolderPath = url.path
     }
 
     func startExport() {
         guard project.hasVideo else {
-            errorMessage = "Load a video first."
+            errorMessage = "Zuerst ein Video laden."
             return
         }
         guard let folder = project.export.outputFolderURL else {

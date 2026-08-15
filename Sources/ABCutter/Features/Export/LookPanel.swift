@@ -22,7 +22,7 @@ struct LookPanel: View {
 
     private var frameSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("Frame", selection: state.exportBinding(\.frameTreatment)) {
+            Picker("Rahmen", selection: state.exportBinding(\.frameTreatment)) {
                 ForEach(FrameTreatment.allCases) { treatment in
                     Text(treatment.title).tag(treatment)
                 }
@@ -31,28 +31,28 @@ struct LookPanel: View {
 
             if state.project.export.frameTreatment != .fullBleed {
                 labelledSlider(
-                    "Size",
+                    "Grösse",
                     value: state.exportBinding(\.insetScale),
                     range: 0.6...0.98,
                     readout: "\(Int(state.project.export.insetScale * 100)) %"
                 )
 
-                Picker("Around", selection: state.exportBinding(\.frameBackdrop)) {
+                Picker("Umgebung", selection: state.exportBinding(\.frameBackdrop)) {
                     ForEach(FrameBackdrop.allCases) { backdrop in
                         Text(backdrop.title).tag(backdrop)
                     }
                 }
                 .controlSize(.small)
 
-                Toggle("Hairline border", isOn: state.exportBinding(\.showFrameBorder))
+                Toggle("Feine Rahmenlinie", isOn: state.exportBinding(\.showFrameBorder))
                     .toggleStyle(.checkbox)
 
-                Text("The picture snapping out to full bleed at the switch carries the A/B on its own — a scale change reads faster on a phone than a colour change.")
+                Text("Dass das Bild beim Wechsel auf Vollformat aufspringt, trägt das A/B allein — eine Grössenänderung liest sich auf dem Handy schneller als eine Farbänderung.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
 
-            Picker("Fit", selection: state.exportBinding(\.fitMode)) {
+            Picker("Einpassen", selection: state.exportBinding(\.fitMode)) {
                 ForEach(FitMode.allCases) { mode in
                     Text(mode.title).tag(mode)
                 }
@@ -60,21 +60,21 @@ struct LookPanel: View {
             .controlSize(.small)
         }
         .abCard()
-        .abSection("Framing")
+        .abSection("Rahmen")
     }
 
     // MARK: - Grade
 
     private var gradeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("Before", selection: state.exportBinding(\.beforeLook)) {
+            Picker("A (vorher)", selection: state.exportBinding(\.beforeLook)) {
                 ForEach(LookStyle.allCases) { look in
                     Text(look.title).tag(look)
                 }
             }
             .controlSize(.small)
 
-            Picker("After", selection: state.exportBinding(\.afterLook)) {
+            Picker("B (nachher)", selection: state.exportBinding(\.afterLook)) {
                 ForEach(LookStyle.allCases) { look in
                     Text(look.title).tag(look)
                 }
@@ -82,38 +82,38 @@ struct LookPanel: View {
             .controlSize(.small)
 
             labelledSlider(
-                "Crossfade",
+                "Überblende",
                 value: state.exportBinding(\.audioCrossfadeMilliseconds),
                 range: 0...500,
                 readout: "\(Int(state.project.export.audioCrossfadeMilliseconds)) ms"
             )
         }
         .abCard()
-        .abSection("Grade & audio switch")
+        .abSection("Gradation & Tonwechsel")
     }
 
     // MARK: - Labels
 
     private var labelSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Toggle("Burn in labels", isOn: state.exportBinding(\.showLabels))
+            Toggle("Text einbrennen", isOn: state.exportBinding(\.showLabels))
                 .toggleStyle(.checkbox)
 
             if state.project.export.showLabels {
                 HStack(spacing: 6) {
-                    TextField("Before", text: state.exportBinding(\.beforeLabel))
+                    TextField("A-Text", text: state.exportBinding(\.beforeLabel))
                         .textFieldStyle(.roundedBorder)
                         .controlSize(.small)
-                    TextField("After", text: state.exportBinding(\.afterLabel))
+                    TextField("B-Text", text: state.exportBinding(\.afterLabel))
                         .textFieldStyle(.roundedBorder)
                         .controlSize(.small)
                 }
 
-                TextField("Second line — title, direction, credits", text: state.exportBinding(\.subtitleText))
+                TextField("Zweite Zeile — Titel, Regie, Credits", text: state.exportBinding(\.subtitleText))
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
 
-                Picker("Style", selection: state.exportBinding(\.labelStyle)) {
+                Picker("Stil", selection: state.exportBinding(\.labelStyle)) {
                     ForEach(LabelStyle.allCases) { style in
                         Text(style.title).tag(style)
                     }
@@ -128,23 +128,23 @@ struct LookPanel: View {
                 .controlSize(.small)
 
                 if state.project.export.labelStyle == .tinted {
-                    Picker("Shadow", selection: state.exportBinding(\.labelShadow)) {
+                    Picker("Schatten", selection: state.exportBinding(\.labelShadow)) {
                         ForEach(LabelShadowMode.allCases) { mode in
                             Text(mode.title).tag(mode)
                         }
                     }
                     .pickerStyle(.segmented)
                     .controlSize(.small)
-                    .help("Auto adds a soft shadow only where the tint would not read against the picture")
+                    .help("Automatisch setzt einen weichen Schatten nur dort, wo die Farbe gegen das Bild nicht lesbar wäre")
 
-                    Text("The tint is read from the colour frame, so a monochrome half still keeps a coloured label.")
+                    Text("Die Farbe wird aus dem Farbbild gelesen — auch eine Schwarzweiss-Hälfte behält so farbigen Text.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }
         }
         .abCard()
-        .abSection("Labels")
+        .abSection("Text")
     }
 
     // MARK: - Helpers

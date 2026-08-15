@@ -85,10 +85,10 @@ struct PlayerPane: View {
             Image(systemName: "film")
                 .font(.system(size: 34, weight: .light))
                 .foregroundStyle(.secondary)
-            Text("Load a finished film, then lay your mixes under it.")
+            Text("Fertigen Film laden, dann die Mixe darunterlegen.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            Button("Choose video…") { state.presentVideoPicker() }
+            Button("Video wählen …") { state.presentVideoPicker() }
                 .buttonStyle(.borderedProminent)
         }
     }
@@ -97,13 +97,13 @@ struct PlayerPane: View {
 
     private var monitorBar: some View {
         HStack(spacing: 12) {
-            Text("Monitor")
+            Text("Abhöre")
                 .font(.system(size: 10, weight: .semibold))
                 .kerning(0.6)
                 .foregroundStyle(.secondary)
 
             Picker("", selection: monitorSelection) {
-                Text("A/B follow split").tag(MonitorSelection.followSplit)
+                Text("A/B folgt Wechseln").tag(MonitorSelection.followSplit)
                 ForEach(state.project.audioSources) { source in
                     Text(source.name).tag(MonitorSelection.single(source.id))
                 }
@@ -113,13 +113,13 @@ struct PlayerPane: View {
 
             Divider().frame(height: 16)
 
-            Text("Framing")
+            Text("Format")
                 .font(.system(size: 10, weight: .semibold))
                 .kerning(0.6)
                 .foregroundStyle(.secondary)
 
             Picker("", selection: previewFormatBinding) {
-                Text("Full frame").tag(SocialFormat?.none)
+                Text("Ganzes Bild").tag(SocialFormat?.none)
                 ForEach(SocialFormat.allCases) { format in
                     Text(format.title).tag(SocialFormat?.some(format))
                 }
@@ -127,7 +127,21 @@ struct PlayerPane: View {
             .labelsHidden()
             .frame(width: 130)
 
-            Toggle("Loop in clip", isOn: limitBinding)
+            Divider().frame(height: 16)
+
+            // A straight comparison, independent of where the switches fall.
+            // This is what an ear wants when checking two mixes against each
+            // other, and it also shows at once whether both are audible at all.
+            Button("Nur A") { state.monitorOnlySide(before: true) }
+                .controlSize(.small)
+                .tint(isSoloing(before: true) ? Theme.beforeTint : nil)
+                .disabled(state.project.audioSources.isEmpty)
+            Button("Nur B") { state.monitorOnlySide(before: false) }
+                .controlSize(.small)
+                .tint(isSoloing(before: false) ? Theme.afterTint : nil)
+                .disabled(state.project.audioSources.isEmpty)
+
+            Toggle("Im Clip bleiben", isOn: limitBinding)
                 .toggleStyle(.checkbox)
                 .font(.caption)
 
@@ -135,6 +149,11 @@ struct PlayerPane: View {
         }
         .padding(.horizontal, Theme.panelPadding)
         .padding(.vertical, 6)
+    }
+
+    private func isSoloing(before: Bool) -> Bool {
+        guard case .single(let id) = player.monitorMode else { return false }
+        return id == state.resolvedSideID(before: before)
     }
 
     private enum MonitorSelection: Hashable {
@@ -187,29 +206,29 @@ struct PlayerPane: View {
             Button { player.step(frames: -10, frameRate: state.project.frameRate) } label: {
                 Image(systemName: "backward.end.alt")
             }
-            .help("Back 10 frames")
+            .help("10 Bilder zurück")
 
             Button { player.step(frames: -1, frameRate: state.project.frameRate) } label: {
                 Image(systemName: "backward.frame")
             }
-            .help("Back one frame")
+            .help("Ein Bild zurück")
 
             Button { player.togglePlay() } label: {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                     .frame(width: 18)
             }
             .keyboardShortcut(.space, modifiers: [])
-            .help("Play / pause")
+            .help("Abspielen / Pause")
 
             Button { player.step(frames: 1, frameRate: state.project.frameRate) } label: {
                 Image(systemName: "forward.frame")
             }
-            .help("Forward one frame")
+            .help("Ein Bild vor")
 
             Button { player.step(frames: 10, frameRate: state.project.frameRate) } label: {
                 Image(systemName: "forward.end.alt")
             }
-            .help("Forward 10 frames")
+            .help("10 Bilder vor")
 
             Divider().frame(height: 16)
 
@@ -219,26 +238,26 @@ struct PlayerPane: View {
             if let clip {
                 Text(halfLabel(for: clip))
                     .font(.caption)
-                    .foregroundStyle(player.currentTime < clip.splitTime ? Theme.beforeTint : Theme.afterTint)
+                    .foregroundStyle(clip.isBeforeSegment(at: player.currentTime) ? Theme.beforeTint : Theme.afterTint)
             }
 
             Spacer()
 
-            Button("Mark in") { state.markIn() }
+            Button("In") { state.markIn() }
                 .disabled(clip == nil)
                 .help(state.project.keepClipLengthFixed
-                      ? "Start the fixed-length window here"
-                      : "Trim the head to the playhead")
-            Button("Mark out") { state.markOut() }
+                      ? "Fenster fester Länge hier beginnen"
+                      : "Anfang auf den Abspielkopf trimmen")
+            Button("Out") { state.markOut() }
                 .disabled(clip == nil)
                 .help(state.project.keepClipLengthFixed
-                      ? "End the fixed-length window here"
+                      ? "Fenster fester Länge hier enden lassen"
                       : "Trim the tail to the playhead")
-            Button("Split here") { state.setSplitToPlayhead() }
+            Button("Wechsel +") { state.addSwitchAtPlayhead() }
                 .disabled(clip == nil)
-            Button("New clip") { state.addClipAtPlayhead() }
+            Button("Neuer Clip") { state.addClipAtPlayhead() }
                 .disabled(!state.project.hasVideo)
-                .help("Drop a \(String(format: "%g", state.project.defaultClipLengthSeconds)) s clip at the playhead (⌘N)")
+                .help("Setzt einen \(String(format: "%g", state.project.defaultClipLengthSeconds))-s-Clip am Abspielkopf (⌘N)")
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
@@ -263,7 +282,7 @@ struct PlayerPane: View {
     }
 
     private func halfLabel(for clip: Clip) -> String {
-        guard player.currentTime >= clip.start, player.currentTime <= clip.end else { return "outside clip" }
-        return player.currentTime < clip.splitTime ? "BEFORE half" : "AFTER half"
+        guard player.currentTime >= clip.start, player.currentTime <= clip.end else { return "ausserhalb des Clips" }
+        return clip.isBeforeSegment(at: player.currentTime) ? "Hört A" : "Hört B"
     }
 }

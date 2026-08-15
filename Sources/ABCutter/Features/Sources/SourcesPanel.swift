@@ -52,35 +52,35 @@ struct SourcesPanel: View {
                         Toggle("DF", isOn: dropFrameBinding)
                             .toggleStyle(.checkbox)
                             .controlSize(.small)
-                            .help("Display drop-frame timecode")
+                            .help("Drop-Frame-Timecode anzeigen")
                     }
                 }
             } else {
-                Text("No video loaded.")
+                Text("Kein Video geladen.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Button(state.project.hasVideo ? "Replace video…" : "Choose video…") {
+            Button(state.project.hasVideo ? "Video ersetzen …" : "Video wählen …") {
                 state.presentVideoPicker()
             }
             .controlSize(.small)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .abCard()
-        .abSection("Picture")
+        .abSection("Bild")
     }
 
     private var videoTimecodeLine: String {
         guard let start = state.project.videoTimecodeStartSeconds else {
-            return "No embedded timecode"
+            return "Kein eingebetteter Timecode"
         }
         let formatted = Timecode.string(
             fromSeconds: start,
             rate: state.project.frameRate,
             dropFrame: state.project.dropFrame
         )
-        return "Starts at \(formatted)"
+        return "Beginnt bei \(formatted)"
     }
 
     private var frameRateBinding: Binding<FrameRate> {
@@ -106,22 +106,22 @@ struct SourcesPanel: View {
             }
 
             if state.project.audioSources.isEmpty {
-                Text("No audio layers yet.")
+                Text("Noch keine Tonspuren.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             HStack {
-                Button("Add audio…") { state.presentAudioPicker() }
+                Button("Ton hinzufügen …") { state.presentAudioPicker() }
                     .controlSize(.small)
-                Button("Auto-sync") { state.autoSyncAll() }
+                Button("Auto-Sync") { state.autoSyncAll() }
                     .controlSize(.small)
                     .disabled(state.project.videoTimecodeStartSeconds == nil)
-                    .help("Line every stamped file up with the picture using its embedded timecode")
+                    .help("Jede gestempelte Datei per eingebettetem Timecode aufs Bild legen")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .abSection("Audio layers")
+        .abSection("Tonspuren")
     }
 
     // MARK: - Defaults
@@ -129,7 +129,7 @@ struct SourcesPanel: View {
     private var defaultsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             sourcePicker(
-                title: "Before",
+                title: "A (vorher)",
                 tint: Theme.beforeTint,
                 selection: Binding(
                     get: { state.project.defaultBeforeSourceID },
@@ -140,7 +140,7 @@ struct SourcesPanel: View {
                 )
             )
             sourcePicker(
-                title: "After",
+                title: "B (nachher)",
                 tint: Theme.afterTint,
                 selection: Binding(
                     get: { state.project.defaultAfterSourceID },
@@ -150,13 +150,13 @@ struct SourcesPanel: View {
                     }
                 )
             )
-            Text("Clips use these unless they override them.")
+            Text("Clips verwenden diese, sofern sie nichts eigenes setzen.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .abCard()
-        .abSection("Default A/B pair")
+        .abSection("Standard-A/B-Paar")
     }
 
     private func sourcePicker(title: String, tint: Color, selection: Binding<UUID?>) -> some View {
@@ -166,7 +166,7 @@ struct SourcesPanel: View {
                 .frame(width: 8, height: 8)
             Text(title)
                 .font(.caption)
-                .frame(width: 44, alignment: .leading)
+                .frame(width: 62, alignment: .leading)
             Picker("", selection: selection) {
                 Text("—").tag(UUID?.none)
                 ForEach(state.project.audioSources) { source in
@@ -194,7 +194,7 @@ struct AudioSourceRow: View {
                 Toggle("", isOn: enabledBinding)
                     .toggleStyle(.checkbox)
                     .labelsHidden()
-                    .help("Include in the preview timeline")
+                    .help("In der Vorschau berücksichtigen")
 
                 Text(source.name)
                     .font(.system(size: 12, weight: .medium))
@@ -211,7 +211,7 @@ struct AudioSourceRow: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .help("Remove this layer")
+                    .help("Diese Spur entfernen")
                 }
             }
 
@@ -257,7 +257,7 @@ struct AudioSourceRow: View {
                 .frame(width: 92)
                 .multilineTextAlignment(.center)
                 .onSubmit { isEditingOffset = false }
-                .help("Offset from the first frame of the picture, in seconds. HH:MM:SS:FF is accepted too.")
+                .help("Versatz zum ersten Bild des Films, in Sekunden. HH:MM:SS:FF geht auch.")
 
             Button("+1f") { state.nudgeOffset(state.project.frameDuration, for: source) }
             Button("+10f") { state.nudgeOffset(10 * state.project.frameDuration, for: source) }
@@ -289,7 +289,7 @@ struct AudioSourceRow: View {
 
     private var gainControl: some View {
         HStack(spacing: 6) {
-            Text("Gain")
+            Text("Pegel")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             Slider(

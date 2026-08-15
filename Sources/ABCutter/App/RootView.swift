@@ -27,7 +27,7 @@ struct RootView: View {
         .frame(minWidth: 1120, minHeight: 720)
         .toolbar { toolbarItems }
         .alert(
-            "Something needs attention",
+            "Da ist etwas zu klären",
             isPresented: Binding(
                 get: { state.errorMessage != nil },
                 set: { if !$0 { state.errorMessage = nil } }
@@ -79,17 +79,17 @@ struct RootView: View {
     /// run of play instead of showing controls that cannot do anything yet.
     private var gettingStarted: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("How this goes")
+            Text("So läuft es")
                 .font(.system(size: 12, weight: .semibold))
 
-            step(1, "Load the finished film.", "Its timecode and frame rate are read automatically.")
-            step(2, "Add your mixes and stems.", "Stamped files line up on their own; the rest you nudge.")
-            step(3, "Mark clips at a house length.", "Scrub, ⌘N, scrub, ⌘N — the A/B lands in the middle.")
-            step(4, "Grab a cover and export.", "Every clip against every format in one run.")
+            step(1, "Fertigen Film laden.", "Timecode und Bildrate werden automatisch gelesen.")
+            step(2, "Mixe und Stems hinzufügen.", "Gestempelte Dateien legen sich selbst; den Rest schiebst du.")
+            step(3, "Clips in Hauslänge setzen.", "Suchen, ⌘N, suchen, ⌘N — der A/B-Wechsel landet in der Mitte.")
+            step(4, "Titelbild greifen und exportieren.", "Jeder Clip in jedem Format, in einem Lauf.")
 
             Divider()
 
-            Button("Choose video…") { state.presentVideoPicker() }
+            Button("Video wählen …") { state.presentVideoPicker() }
                 .buttonStyle(.borderedProminent)
 
             Spacer()
@@ -127,33 +127,33 @@ struct RootView: View {
             Button { state.presentVideoPicker() } label: {
                 Label("Video", systemImage: "film")
             }
-            .help("Load the finished film (⌘O)")
+            .help("Fertigen Film laden (⌘O)")
 
             Button { state.presentAudioPicker() } label: {
-                Label("Audio", systemImage: "waveform")
+                Label("Ton", systemImage: "waveform")
             }
             .disabled(!state.project.hasVideo)
-            .help("Add a mix or stem under the picture (⇧⌘O)")
+            .help("Mix oder Stem unters Bild legen (⇧⌘O)")
 
             Button { state.autoSyncAll() } label: {
                 Label("Sync", systemImage: "timeline.selection")
             }
             .disabled(state.project.videoTimecodeStartSeconds == nil)
-            .help("Sync every stamped file by timecode")
+            .help("Alle gestempelten Dateien per Timecode syncen")
 
             Spacer()
 
             Button { state.grabStill() } label: {
-                Label("Cover", systemImage: "camera")
+                Label("Titelbild", systemImage: "camera")
             }
             .disabled(!state.project.hasVideo)
-            .help("Grab the frame at the playhead (⇧⌘G)")
+            .help("Bild am Abspielkopf greifen (⇧⌘G)")
 
             Button { state.startExport() } label: {
                 Label("Export", systemImage: "square.and.arrow.up")
             }
             .disabled(!state.project.hasVideo || state.exportQueue.isRunning)
-            .help("Export every enabled clip (⌘E)")
+            .help("Alle aktiven Clips exportieren (⌘E)")
         }
     }
 

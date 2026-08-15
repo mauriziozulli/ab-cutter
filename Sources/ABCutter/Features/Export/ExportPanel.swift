@@ -36,7 +36,7 @@ struct ExportPanel: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .abCard()
-        .abSection("Output formats")
+        .abSection("Ausgabeformate")
     }
 
     private func formatBinding(_ format: SocialFormat) -> Binding<Bool> {
@@ -75,16 +75,16 @@ struct ExportPanel: View {
                     .lineLimit(1)
                     .truncationMode(.head)
                 Spacer()
-                Button("Choose…") { state.chooseOutputFolder() }
+                Button("Wählen …") { state.chooseOutputFolder() }
                     .controlSize(.small)
             }
         }
         .abCard()
-        .abSection("Delivery")
+        .abSection("Ausgabe")
     }
 
     private var folderLabel: String {
-        guard let path = state.project.export.outputFolderPath else { return "No output folder chosen" }
+        guard let path = state.project.export.outputFolderPath else { return "Kein Zielordner gewählt" }
         return URL(fileURLWithPath: path).lastPathComponent
     }
 
@@ -97,14 +97,14 @@ struct ExportPanel: View {
                 .foregroundStyle(plannedFileCount == 0 ? Color.orange : Color.secondary)
 
             HStack {
-                Button(queue.isRunning ? "Exporting…" : "Export batch") {
+                Button(queue.isRunning ? "Exportiere …" : "Stapel exportieren") {
                     state.startExport()
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(queue.isRunning || plannedFileCount == 0)
 
                 if queue.isRunning {
-                    Button("Cancel") { queue.cancel() }
+                    Button("Abbrechen") { queue.cancel() }
                         .controlSize(.small)
                 }
                 Spacer()
@@ -122,7 +122,7 @@ struct ExportPanel: View {
             }
         }
         .abCard()
-        .abSection("Run")
+        .abSection("Lauf")
     }
 
     private var enabledClipCount: Int {
@@ -136,10 +136,10 @@ struct ExportPanel: View {
     private var plan: String {
         let clips = enabledClipCount
         let formats = state.project.export.formats.count
-        guard clips > 0 else { return "No clips are marked for export." }
-        guard formats > 0 else { return "No output format is selected." }
+        guard clips > 0 else { return "Kein Clip ist für den Export markiert." }
+        guard formats > 0 else { return "Es ist kein Ausgabeformat gewählt." }
         let total = clips * formats
-        return "\(clips) clip\(clips == 1 ? "" : "s") × \(formats) format\(formats == 1 ? "" : "s") = \(total) file\(total == 1 ? "" : "s")"
+        return "\(clips) Clip\(clips == 1 ? "" : "s") × \(formats) Format\(formats == 1 ? "" : "e") = \(total) Datei\(total == 1 ? "" : "en")"
     }
 
     // MARK: - Jobs
@@ -172,12 +172,12 @@ struct ExportPanel: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
-                        .help("Show in Finder")
+                        .help("Im Finder zeigen")
                     }
                 }
             }
         }
-        .abSection("Queue")
+        .abSection("Warteschlange")
     }
 
     @ViewBuilder

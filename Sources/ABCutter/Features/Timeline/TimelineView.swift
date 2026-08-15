@@ -80,7 +80,7 @@ struct TimelineView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Text("Timeline")
+            Text("Zeitleiste")
                 .font(.system(size: 10, weight: .semibold))
                 .kerning(0.6)
                 .foregroundStyle(.secondary)
@@ -109,7 +109,7 @@ struct TimelineView: View {
     private var zoomLabel: String {
         let visible = visibleDuration
         if visible < 60 { return String(format: "%.1f s", visible) }
-        return String(format: "%.0f min", visible / 60)
+        return String(format: "%.0f Min", visible / 60)
     }
 
     // MARK: - Coordinate mapping
@@ -190,27 +190,37 @@ struct TimelineView: View {
             let isSelected = clip.id == state.selectedClipID
             let path = Path(roundedRect: rect, cornerRadius: 3)
 
-            // The before half is drawn muted and the after half saturated, so
-            // the split reads at a glance.
-            let splitX = x(for: clip.splitTime, width: width)
+            // Segments alternate, so the lane is painted in bands: muted for
+            // a before stretch, saturated for an after one.
             context.fill(
                 path,
                 with: .color(Theme.clipTint.opacity(clip.isEnabled ? 0.28 : 0.10))
             )
-            if splitX > rect.minX, splitX < rect.maxX {
+
+            let bounds = [clip.start] + clip.switches + [clip.end]
+            for index in 0..<(bounds.count - 1) where !index.isMultiple(of: 2) {
+                let from = max(x(for: bounds[index], width: width), rect.minX)
+                let to = min(x(for: bounds[index + 1], width: width), rect.maxX)
+                guard to > from else { continue }
                 context.fill(
-                    Path(CGRect(x: splitX, y: top, width: rect.maxX - splitX, height: height)),
-                    with: .color(Theme.afterTint.opacity(clip.isEnabled ? 0.22 : 0.08))
+                    Path(CGRect(x: from, y: top, width: to - from, height: height)),
+                    with: .color(Theme.afterTint.opacity(clip.isEnabled ? 0.30 : 0.10))
                 )
+            }
+
+            for point in clip.switches {
+                let markX = x(for: point, width: width)
+                guard markX > rect.minX, markX < rect.maxX else { continue }
                 context.stroke(
                     Path { path in
-                        path.move(to: CGPoint(x: splitX, y: top))
-                        path.addLine(to: CGPoint(x: splitX, y: top + height))
+                        path.move(to: CGPoint(x: markX, y: top))
+                        path.addLine(to: CGPoint(x: markX, y: top + height))
                     },
-                    with: .color(.white.opacity(0.8)),
+                    with: .color(.white.opacity(0.85)),
                     style: StrokeStyle(lineWidth: 1, dash: [3, 2])
                 )
             }
+
             context.stroke(
                 path,
                 with: .color(isSelected ? Theme.clipTint : Theme.hairline),
@@ -312,12 +322,16 @@ struct TimelineView: View {
         for clip in state.project.clips.reversed() {
             guard time >= clip.start - slop, time <= clip.end + slop else { continue }
 
+            let nearestSwitch = clip.switches.min {
+                abs($0 - time) < abs($1 - time)
+            }
+
             let handle: ClipDrag.Handle
             if abs(time - clip.start) <= slop {
                 handle = .trimIn
             } else if abs(time - clip.end) <= slop {
                 handle = .trimOut
-            } else if abs(time - clip.splitTime) <= slop {
+            } else if let nearestSwitch, abs(time - nearestSwitch) <= slop {
                 handle = .split
             } else {
                 handle = .move
@@ -328,7 +342,7 @@ struct TimelineView: View {
                 handle: handle,
                 originStart: clip.start,
                 originEnd: clip.end,
-                originSplit: clip.splitTime
+                originSplit: nearestSwitch ?? clip.splitTime
             )
         }
         return nil
@@ -355,7 +369,7 @@ struct TimelineView: View {
                 state.trimClip(drag.clipID, start: drag.originStart, end: drag.originEnd + delta)
             }
         case .split:
-            state.setSplit(drag.clipID, to: drag.originSplit + delta)
+            state.moveSwitch(drag.clipID, from: drag.originSplit, to: drag.originSplit + delta)
         }
     }
 

@@ -13,7 +13,7 @@ struct ClipsPanel: View {
             if let clip = state.selectedClip {
                 ClipInspector(state: state, clip: clip)
             } else {
-                Text("Select a clip to edit it.")
+                Text("Einen Clip wählen, um ihn zu bearbeiten.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -27,12 +27,12 @@ struct ClipsPanel: View {
             }
 
             if state.project.clips.isEmpty {
-                Text("No clips yet.")
+                Text("Noch keine Clips.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Button("Add \(String(format: "%g", state.project.defaultClipLengthSeconds)) s clip at playhead") {
+            Button("\(String(format: "%g", state.project.defaultClipLengthSeconds))-s-Clip am Abspielkopf") {
                 state.addClipAtPlayhead()
             }
             .controlSize(.small)
@@ -54,7 +54,7 @@ struct ClipsPanel: View {
             ))
             .toggleStyle(.checkbox)
             .labelsHidden()
-            .help("Include in a batch export")
+            .help("Beim Stapelexport berücksichtigen")
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(clip.name)
@@ -117,19 +117,19 @@ struct ClipLengthCard: View {
                     .frame(width: 54)
                     .multilineTextAlignment(.center)
                     .onSubmit { isEditingLength = false }
-                    .help("Custom length in seconds")
+                    .help("Eigene Länge in Sekunden")
             }
 
-            Toggle("Keep every clip this length", isOn: Binding(
+            Toggle("Alle Clips auf dieser Länge halten", isOn: Binding(
                 get: { state.project.keepClipLengthFixed },
                 set: { state.project.keepClipLengthFixed = $0 }
             ))
             .toggleStyle(.checkbox)
             .font(.caption)
-            .help("In and out points slide a fixed window instead of trimming one edge")
+            .help("In und Out schieben ein Fenster fester Länge, statt eine Kante zu trimmen")
 
             HStack(spacing: 6) {
-                Button("Apply to all clips") { state.applyDefaultLengthToAllClips() }
+                Button("Auf alle Clips anwenden") { state.applyDefaultLengthToAllClips() }
                     .controlSize(.small)
                     .disabled(state.project.clips.isEmpty)
                 Spacer()
@@ -140,7 +140,7 @@ struct ClipLengthCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .abCard()
-        .abSection("Clip length")
+        .abSection("Clip-Länge")
     }
 
     private func isActive(_ preset: Double) -> Bool {
@@ -149,7 +149,7 @@ struct ClipLengthCard: View {
 
     private var splitNote: String {
         let half = state.project.defaultClipLengthSeconds / 2
-        return "A/B switch at \(String(format: "%.1f", half)) s"
+        return "A/B-Wechsel bei \(String(format: "%.1f", half)) s"
     }
 
     private var lengthBinding: Binding<String> {
@@ -212,12 +212,12 @@ struct ClipInspector: View {
             )
 
             lengthRow
-            splitRow
+            switchRows
 
             Divider()
 
             abRow(
-                title: "Before",
+                title: "A (vorher)",
                 tint: Theme.beforeTint,
                 selection: Binding(
                     get: { clip.beforeSourceID },
@@ -231,7 +231,7 @@ struct ClipInspector: View {
             )
 
             abRow(
-                title: "After",
+                title: "B (nachher)",
                 tint: Theme.afterTint,
                 selection: Binding(
                     get: { clip.afterSourceID },
@@ -268,23 +268,23 @@ struct ClipInspector: View {
             ))
             .timecodeStyle(size: 11)
             Spacer()
-            Button("Set") { onMark() }
+            Button("Setzen") { onMark() }
                 .controlSize(.mini)
-                .help("Use the current playhead position")
+                .help("Aktuelle Position des Abspielkopfs übernehmen")
             Button {
                 state.player.seek(to: seconds)
             } label: {
                 Image(systemName: "arrow.right.to.line")
             }
             .controlSize(.mini)
-            .help("Jump the playhead here")
+            .help("Abspielkopf hierher setzen")
         }
         .buttonStyle(.bordered)
     }
 
     private var lengthRow: some View {
         HStack(spacing: 6) {
-            Text("Length")
+            Text("Länge")
                 .font(.caption)
                 .frame(width: 46, alignment: .leading)
             Text(String(format: "%.2f s", clip.duration))
@@ -293,57 +293,75 @@ struct ClipInspector: View {
                 Image(systemName: "lock.fill")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .help("In and out slide a fixed window — change the house length above")
+                    .help("In und Out schieben ein festes Fenster — Hauslänge oben ändern")
             }
             Spacer()
-            Button("House") {
+            Button("Hauslänge") {
                 state.setLength(state.project.defaultClipLengthSeconds, for: clip)
             }
             .controlSize(.mini)
-            .help("Snap this clip to the house length")
+            .help("Diesen Clip auf die Hauslänge setzen")
         }
         .buttonStyle(.bordered)
     }
 
-    private var splitRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text("Split")
-                    .font(.caption)
-                    .frame(width: 46, alignment: .leading)
-                Text(Timecode.string(
-                    fromSeconds: clip.splitTime,
-                    rate: state.project.frameRate,
-                    dropFrame: state.project.dropFrame
-                ))
-                .timecodeStyle(size: 11)
-                if clip.splitOverride == nil {
-                    Text("middle")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+    /// The A/B switches. One is the norm and stays a single line; adding more
+    /// simply alternates the sides, so no per-segment state has to be shown.
+    private var switchRows: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(clip.switches.enumerated()), id: \.offset) { index, point in
+                HStack(spacing: 6) {
+                    Text(index.isMultiple(of: 2) ? "A → B" : "B → A")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(index.isMultiple(of: 2) ? Theme.afterTint : Theme.beforeTint)
+                        .frame(width: 46, alignment: .leading)
+                    Text(Timecode.string(
+                        fromSeconds: point,
+                        rate: state.project.frameRate,
+                        dropFrame: state.project.dropFrame
+                    ))
+                    .timecodeStyle(size: 11)
+                    if clip.usesDefaultSplit {
+                        Text("Mitte")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button {
+                        state.player.seek(to: point)
+                    } label: {
+                        Image(systemName: "arrow.right.to.line")
+                    }
+                    .controlSize(.mini)
+                    .buttonStyle(.bordered)
+                    .help("Abspielkopf hierher setzen")
                 }
+            }
+
+            HStack(spacing: 6) {
+                Button("Wechsel hier") { state.addSwitchAtPlayhead() }
+                    .controlSize(.mini)
+                    .help("Fügt am Abspielkopf einen weiteren A/B-Wechsel ein")
+                Button("Nur einer hier") { state.setSplitToPlayhead() }
+                    .controlSize(.mini)
+                    .help("Ersetzt alle Wechsel durch einen am Abspielkopf")
+                Button("Entfernen") { state.removeSwitchNearestPlayhead() }
+                    .controlSize(.mini)
+                    .disabled(clip.switches.count < 2)
+                Button("Mitte") { state.resetSplitToMiddle() }
+                    .controlSize(.mini)
+                    .disabled(clip.usesDefaultSplit)
                 Spacer()
-                Button("Set") { state.setSplitToPlayhead() }
-                    .controlSize(.mini)
-                Button("Middle") { state.resetSplitToMiddle() }
-                    .controlSize(.mini)
-                    .disabled(clip.splitOverride == nil)
             }
             .buttonStyle(.bordered)
 
-            Slider(
-                value: Binding(
-                    get: { clip.splitFraction },
-                    set: { fraction in
-                        var updated = clip
-                        updated.splitOverride = clip.start + fraction * clip.duration
-                        state.updateClip(updated)
-                    }
-                ),
-                in: 0...1
-            )
-            .controlSize(.mini)
+            if clip.switches.count > 1 {
+                Text("\(clip.switches.count) Wechsel — die Seiten wechseln sich ab, beginnend mit A.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
+        .abSection("A/B-Wechsel")
     }
 
     private func abRow(
@@ -356,7 +374,7 @@ struct ClipInspector: View {
             Circle().fill(tint).frame(width: 8, height: 8)
             Text(title)
                 .font(.caption)
-                .frame(width: 44, alignment: .leading)
+                .frame(width: 60, alignment: .leading)
             Picker("", selection: selection) {
                 Text(defaultLabel(resolved)).tag(UUID?.none)
                 ForEach(state.project.audioSources) { source in
@@ -369,13 +387,13 @@ struct ClipInspector: View {
     }
 
     private func defaultLabel(_ resolved: AudioSource?) -> String {
-        guard let resolved else { return "Default (—)" }
-        return "Default (\(resolved.name))"
+        guard let resolved else { return "Standard (—)" }
+        return "Standard (\(resolved.name))"
     }
 
     private var framingControls: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Framing inside the crop")
+            Text("Bildausschnitt verschieben")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
@@ -427,7 +445,7 @@ struct ClipInspector: View {
                 .controlSize(.mini)
             }
 
-            Text("Only applies when the format crops — pick a framing preview above to see it.")
+            Text("Wirkt nur, wenn das Format beschneidet — oben eine Format-Vorschau wählen.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }

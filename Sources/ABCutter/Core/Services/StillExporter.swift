@@ -13,9 +13,9 @@ enum StillError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .grabFailed: "That frame could not be read from the film."
-        case .renderFailed: "The title card could not be rendered."
-        case .writeFailed(let detail): "The image could not be written. \(detail)"
+        case .grabFailed: "Dieses Bild konnte nicht aus dem Film gelesen werden."
+        case .renderFailed: "Das Titelbild konnte nicht gerendert werden."
+        case .writeFailed(let detail): "Das Bild konnte nicht geschrieben werden. \(detail)"
         }
     }
 }
@@ -107,7 +107,7 @@ enum StillExporter {
             1,
             nil
         ) else {
-            throw StillError.writeFailed("No encoder for \(fileFormat.fileExtension).")
+            throw StillError.writeFailed("Kein Encoder für \(fileFormat.fileExtension).")
         }
 
         let options: [CFString: Any] = fileFormat == .jpeg
@@ -116,7 +116,7 @@ enum StillExporter {
         CGImageDestinationAddImage(destination, image, options as CFDictionary)
 
         guard CGImageDestinationFinalize(destination) else {
-            throw StillError.writeFailed("The encoder rejected the image.")
+            throw StillError.writeFailed("Der Encoder hat das Bild abgelehnt.")
         }
     }
 

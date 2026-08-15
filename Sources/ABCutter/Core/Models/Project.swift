@@ -15,8 +15,8 @@ enum SyncMode: String, Codable, Sendable {
     var title: String {
         switch self {
         case .timecode: "Timecode"
-        case .fileStart: "File start"
-        case .manual: "Manual"
+        case .fileStart: "Dateianfang"
+        case .manual: "Manuell"
         }
     }
 }
@@ -52,7 +52,7 @@ struct AudioSource: Identifiable, Codable, Hashable {
         case 2: "Stereo"
         case 6: "5.1"
         case 8: "7.1"
-        default: "\(channelCount) ch"
+        default: "\(channelCount) Kan."
         }
     }
 
@@ -64,18 +64,24 @@ struct AudioSource: Identifiable, Codable, Hashable {
 
 // MARK: - Clips
 
-/// A social-media excerpt with an A/B switch inside it.
+/// A social-media excerpt with one or more A/B switches inside it.
+///
+/// The switches simply alternate: the clip opens on the "before" source, flips
+/// to "after" at the first point, back at the second, and so on. That keeps a
+/// rhythm of comparisons expressible as a plain list of times, with no per-
+/// segment state to keep consistent.
 struct Clip: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
     var name: String
     /// Project-timeline seconds. t = 0 is the first frame of the video.
     var start: Double
     var end: Double
-    /// Absolute project seconds. `nil` keeps the split at the exact midpoint.
-    var splitOverride: Double?
-    /// Audio heard before the switch. `nil` falls back to the project default.
+    /// Absolute project seconds where the A/B alternates. Empty means a single
+    /// switch at the exact midpoint.
+    var switchPoints: [Double] = []
+    /// Audio heard before the first switch. `nil` uses the project default.
     var beforeSourceID: UUID?
-    /// Audio heard after the switch. `nil` falls back to the project default.
+    /// Audio heard after it. `nil` uses the project default.
     var afterSourceID: UUID?
     /// Framing inside the crop, -1 … 1. 0 is centred.
     var panX: Double = 0
@@ -85,16 +91,108 @@ struct Clip: Identifiable, Codable, Hashable {
 
     var duration: Double { max(end - start, 0) }
 
-    /// Where the picture flips from before-look to after-look.
-    var splitTime: Double {
-        guard let splitOverride else { return start + duration / 2 }
-        return min(max(splitOverride, start), end)
+    /// The switches actually in force: sorted, de-duplicated and inside the
+    /// clip. An empty list yields the midpoint, which is the common case.
+    var switches: [Double] {
+        guard duration > 0 else { return [] }
+        guard !switchPoints.isEmpty else { return [start + duration / 2] }
+        var seen: [Double] = []
+        for point in switchPoints.map({ min(max($0, start), end) }).sorted() {
+            // A hair apart is a duplicate as far as the eye and ear go.
+            if let last = seen.last, abs(point - last) < 0.01 { continue }
+            seen.append(point)
+        }
+        return seen
     }
+
+    /// True when `time` falls in a segment fed by the "before" source.
+    func isBeforeSegment(at time: Double) -> Bool {
+        switches.reduce(0) { $0 + (time >= $1 ? 1 : 0) } % 2 == 0
+    }
+
+    /// The first switch — what the single-switch controls still edit.
+    var splitTime: Double { switches.first ?? start + duration / 2 }
 
     /// Split expressed 0 … 1 within the clip.
     var splitFraction: Double {
         guard duration > 0 else { return 0.5 }
         return (splitTime - start) / duration
+    }
+
+    var usesDefaultSplit: Bool { switchPoints.isEmpty }
+
+    mutating func addSwitch(at time: Double) {
+        let clamped = min(max(time, start), end)
+        // Materialise the implicit midpoint before adding to it, or the first
+        // extra switch would silently delete it.
+        var points = switchPoints.isEmpty ? [start + duration / 2] : switchPoints
+        guard !points.contains(where: { abs($0 - clamped) < 0.01 }) else { return }
+        points.append(clamped)
+        switchPoints = points.sorted()
+    }
+
+    mutating func removeSwitch(nearest time: Double) {
+        var points = switches
+        guard !points.isEmpty else { return }
+        guard let index = points.indices.min(by: {
+            abs(points[$0] - time) < abs(points[$1] - time)
+        }) else { return }
+        points.remove(at: index)
+        switchPoints = points
+    }
+
+    mutating func resetSwitchesToMiddle() {
+        switchPoints = []
+    }
+
+    /// Legacy projects stored a single optional `splitOverride`.
+    private enum CodingKeys: String, CodingKey {
+        case id, name, start, end, switchPoints, splitOverride
+        case beforeSourceID, afterSourceID, panX, panY, isEnabled
+    }
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        start: Double,
+        end: Double,
+        switchPoints: [Double] = [],
+        beforeSourceID: UUID? = nil,
+        afterSourceID: UUID? = nil,
+        panX: Double = 0,
+        panY: Double = 0,
+        isEnabled: Bool = true
+    ) {
+        self.id = id
+        self.name = name
+        self.start = start
+        self.end = end
+        self.switchPoints = switchPoints
+        self.beforeSourceID = beforeSourceID
+        self.afterSourceID = afterSourceID
+        self.panX = panX
+        self.panY = panY
+        self.isEnabled = isEnabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decode(String.self, forKey: .name)
+        start = try container.decode(Double.self, forKey: .start)
+        end = try container.decode(Double.self, forKey: .end)
+        if let points = try container.decodeIfPresent([Double].self, forKey: .switchPoints) {
+            switchPoints = points
+        } else if let legacy = try container.decodeIfPresent(Double.self, forKey: .splitOverride) {
+            switchPoints = [legacy]
+        } else {
+            switchPoints = []
+        }
+        beforeSourceID = try container.decodeIfPresent(UUID.self, forKey: .beforeSourceID)
+        afterSourceID = try container.decodeIfPresent(UUID.self, forKey: .afterSourceID)
+        panX = try container.decodeIfPresent(Double.self, forKey: .panX) ?? 0
+        panY = try container.decodeIfPresent(Double.self, forKey: .panY) ?? 0
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
     }
 
     /// A filesystem-safe version of the clip name.
@@ -120,9 +218,9 @@ enum LookStyle: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .color: "Colour (original)"
-        case .blackAndWhite: "Black & white"
-        case .desaturated: "Desaturated"
+        case .color: "Farbe (Original)"
+        case .blackAndWhite: "Schwarzweiss"
+        case .desaturated: "Entsättigt"
         }
     }
 }
@@ -138,8 +236,8 @@ enum FitMode: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .fill: "Fill (crop)"
-        case .fit: "Fit (bars)"
+        case .fill: "Füllen (beschneiden)"
+        case .fit: "Einpassen (Balken)"
         }
     }
 }
@@ -162,9 +260,9 @@ enum FrameTreatment: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .insetBefore: "Framed before → full bleed"
-        case .insetBoth: "Framed throughout"
-        case .fullBleed: "Full bleed"
+        case .insetBefore: "Rahmen → Vollformat"
+        case .insetBoth: "Durchgehend gerahmt"
+        case .fullBleed: "Immer Vollformat"
         }
     }
 
@@ -188,8 +286,8 @@ enum FrameBackdrop: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .blur: "Blurred frame"
-        case .solid: "Near black"
+        case .blur: "Unscharfes Bild"
+        case .solid: "Fast schwarz"
         }
     }
 }
@@ -205,8 +303,8 @@ enum LabelStyle: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .tinted: "Tinted from the frame"
-        case .pill: "White on a pill"
+        case .tinted: "Farbe aus dem Bild"
+        case .pill: "Weiss auf Fläche"
         }
     }
 }
@@ -223,9 +321,9 @@ enum LabelShadowMode: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .auto: "Auto"
-        case .off: "Off"
-        case .always: "Always"
+        case .auto: "Automatisch"
+        case .off: "Aus"
+        case .always: "Immer"
         }
     }
 }
@@ -235,7 +333,7 @@ enum LabelPosition: String, Codable, CaseIterable, Identifiable, Sendable {
     case bottom
 
     var id: String { rawValue }
-    var title: String { self == .top ? "Top" : "Bottom" }
+    var title: String { self == .top ? "Oben" : "Unten" }
 }
 
 /// Delivery aspect ratios. All portrait formats render at 1080 wide, which is
@@ -289,8 +387,8 @@ enum VideoCodecChoice: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .h264: "H.264 (most compatible)"
-        case .hevc: "HEVC (smaller files)"
+        case .h264: "H.264 (kompatibel)"
+        case .hevc: "HEVC (kleiner)"
         }
     }
 }
@@ -341,9 +439,9 @@ enum StillTextPosition: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .top: "Top"
-        case .centre: "Centre"
-        case .bottom: "Bottom"
+        case .top: "Oben"
+        case .centre: "Mitte"
+        case .bottom: "Unten"
         }
     }
 }
@@ -356,7 +454,7 @@ enum StillFileFormat: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .png: "PNG (lossless)"
+        case .png: "PNG (verlustfrei)"
         case .jpeg: "JPEG"
         }
     }

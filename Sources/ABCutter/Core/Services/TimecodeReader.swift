@@ -10,9 +10,9 @@ enum TimecodeOrigin: String, Sendable {
 
     var title: String {
         switch self {
-        case .broadcastWave: "BWF time reference"
-        case .quickTimeTrack: "Timecode track"
-        case .none: "No timecode"
+        case .broadcastWave: "BWF-Zeitreferenz"
+        case .quickTimeTrack: "Timecode-Spur"
+        case .none: "Kein Timecode"
         }
     }
 }

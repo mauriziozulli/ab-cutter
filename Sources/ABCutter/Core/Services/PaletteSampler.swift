@@ -51,7 +51,7 @@ enum PaletteSampler {
             fitMode: settings.fitMode,
             panX: clip.panX,
             panY: clip.panY,
-            splitTime: .zero,
+            switchTimes: [.zero],
             beforeLook: .color,
             afterLook: .color,
             frameTreatment: settings.frameTreatment,
@@ -65,8 +65,8 @@ enum PaletteSampler {
             sourcePreferredTransform: .identity
         )
 
-        // `render` picks the half by comparing against the split, which sits at
-        // zero here — so the after look is what a non-negative time returns.
+        // One switch at zero: a negative time is the before segment, zero and
+        // above the after one.
         let sampleTime = isBefore ? CMTime(seconds: -1, preferredTimescale: 600) : .zero
         let composed = FrameRenderer.render(CIImage(cgImage: frame), at: sampleTime, plan: plan)
         let context = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])

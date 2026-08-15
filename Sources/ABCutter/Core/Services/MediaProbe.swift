@@ -10,11 +10,11 @@ enum MediaProbeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noVideoTrack(let url):
-            "\(url.lastPathComponent) contains no video track."
+            "\(url.lastPathComponent) enthält keine Bildspur."
         case .noAudioTrack(let url):
-            "\(url.lastPathComponent) contains no audio track."
+            "\(url.lastPathComponent) enthält keine Tonspur."
         case .unreadable(let url):
-            "\(url.lastPathComponent) could not be read."
+            "\(url.lastPathComponent) konnte nicht gelesen werden."
         }
     }
 }
