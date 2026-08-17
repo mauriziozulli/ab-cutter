@@ -109,12 +109,14 @@ matrix is encoded sequentially with per-file progress.
 ## Getting around
 
 The window is three columns: audio layers on the left, the picture and
-timeline in the middle, and a four-tab inspector on the right — **Clips**,
-**Look**, **Cover**, **Export** — matching the four moments of the job.
+timeline in the middle, and a three-tab inspector on the right — **Clips**,
+**Cover**, **Export**. The look sits under each clip, because it belongs to
+the clip; the Export tab holds only what is decided once per delivery.
 
 Everything is also in the menu bar with a shortcut. Transport is ⌘J / ⌘K / ⌘L
-for back a frame, play, forward a frame, with Shift for ten. ⌘N drops a clip
-at the playhead, ⌘[ and ⌘] mark in and out, ⌘\\ moves the A/B switch, and
+for back a frame, play, forward a frame, with Shift for ten. ⌘N drops an A/B
+clip at the playhead and ⇧⌘N a loop, ⇧⌘P plays the selected clip exactly as
+it will be exported, ⌘[ and ⌘] mark in and out, ⌘\\ moves the A/B switch, and
 ⌘0–⌘4 flip the framing preview between full frame and each social format.
 Shortcuts all carry a modifier on purpose: a bare key equivalent would be
 swallowed before it reached a text field.
