@@ -74,6 +74,16 @@ enum Brand {
         var ciColor: CIColor {
             CIColor(red: red, green: green, blue: blue, alpha: alpha)
         }
+
+        /// What type sitting on this colour has to be drawn in. Always ink:
+        /// "auf farbigen Flächen steht immer Tinte" is the rule in
+        /// `FARBEN.md`, and `global.css` sets the bar the same way — every
+        /// field in the family is light enough that ink wins.
+        ///
+        /// The printed sticker uses deep green on its ochre and bone
+        /// versions, but that is a two-colour press constraint. A playout is
+        /// a screen and follows the screen rule.
+        var onAccent: Colour { Brand.tinte }
     }
 }
 
@@ -89,9 +99,4 @@ extension BrandAccent {
         case .staubblau: return Brand.staubblau
         }
     }
-
-    /// What type sitting on the accent has to be drawn in. Every field in the
-    /// family is light enough that ink wins, which is the rule from
-    /// `FARBEN.md`: on a coloured field the type is always ink.
-    var onAccent: Brand.Colour { Brand.tinte }
 }
