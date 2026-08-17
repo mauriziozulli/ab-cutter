@@ -14,7 +14,7 @@ final class AppState: ObservableObject {
     @Published var errorMessage: String?
     @Published private(set) var isLoadingMedia = false
     /// Peak envelopes for the timeline, keyed by audio source.
-    @Published private(set) var waveforms: [UUID: [Float]] = [:]
+    @Published private(set) var waveforms: [UUID: Waveform] = [:]
 
     /// Timeline zoom: 1 shows the whole film, higher values zoom in.
     @Published var zoom: Double = 1
@@ -739,12 +739,12 @@ final class AppState: ObservableObject {
             guard let url else { continue }
             let id = source.id
             waveformTasks[id] = Task { [weak self] in
-                let peaks = await WaveformExtractor.peaks(url: url)
+                let waveform = await WaveformExtractor.waveform(url: url)
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     self.waveformTasks[id] = nil
-                    guard !peaks.isEmpty else { return }
-                    self.waveforms[id] = peaks
+                    guard let waveform, !waveform.fine.isEmpty else { return }
+                    self.waveforms[id] = waveform
                 }
             }
         }

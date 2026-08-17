@@ -1,10 +1,14 @@
+import AppKit
 import SwiftUI
 
 /// The strip under the picture: a ruler, one lane per audio layer with its
 /// peak envelope, and the clip regions with their A/B split marks.
 ///
 /// Dragging a lane slides that layer in time, which is the manual sync when a
-/// file carries no timecode.
+/// file carries no timecode. Every external lane carries a ghost of the
+/// embedded track's envelope behind its own, so syncing by hand is lining
+/// two shapes up until they cover each other — and holding ⇧ gears the drag
+/// down twenty to one for the last frame.
 @MainActor
 struct TimelineView: View {
     @ObservedObject var state: AppState
@@ -271,17 +275,37 @@ struct TimelineView: View {
             lineWidth: 1
         )
 
-        if let peaks = state.waveforms[source.id], !peaks.isEmpty, rect.width > 4 {
+        let waveRect = rect.insetBy(dx: 1, dy: 3)
+
+        // The embedded track is the sync reference, so every other lane
+        // carries its shape as a ghost. Dragging until the two envelopes
+        // cover each other IS the manual sync.
+        if !source.isEmbedded,
+           let embedded = state.project.audioSources.first(where: { $0.isEmbedded }),
+           let reference = state.waveforms[embedded.id] {
             drawWaveform(
                 context: context,
-                peaks: peaks,
-                rect: rect.insetBy(dx: 1, dy: 3),
+                waveform: reference,
+                offsetSeconds: embedded.offsetSeconds,
+                laneRect: CGRect(x: 0, y: waveRect.minY, width: width, height: waveRect.height),
+                width: width,
+                tint: Color.primary.opacity(0.18)
+            )
+        }
+
+        if let waveform = state.waveforms[source.id], rect.width > 4 {
+            drawWaveform(
+                context: context,
+                waveform: waveform,
+                offsetSeconds: source.offsetSeconds,
+                laneRect: waveRect,
+                width: width,
                 tint: tint.opacity(source.isEnabled ? 0.85 : 0.3)
             )
         }
 
         context.draw(
-            Text(source.name)
+            Text(laneLabel(for: source))
                 .font(.system(size: 9, weight: .medium))
                 .foregroundColor(.secondary),
             at: CGPoint(x: max(rect.minX, 0) + 4, y: top + 9),
@@ -289,21 +313,39 @@ struct TimelineView: View {
         )
     }
 
-    private func drawWaveform(context: GraphicsContext, peaks: [Float], rect: CGRect, tint: Color) {
-        let midline = rect.midY
-        let columns = Int(rect.width)
-        guard columns > 0 else { return }
+    /// The lane's name, plus the live offset on a movable lane — the number
+    /// being edited when the lane is dragged, so it belongs next to the wave.
+    private func laneLabel(for source: AudioSource) -> String {
+        guard !source.isEmbedded else { return source.name }
+        return String(format: "%@  %+.3f s", source.name, source.offsetSeconds)
+    }
+
+    /// One vertical stroke per visible pixel column, each the loudest moment
+    /// of the slice of time that column covers. Zoomed out, a column folds
+    /// seconds; zoomed in, it shows a five-millisecond bucket — an actual
+    /// transient. Only on-screen columns are walked: the lane rect can be
+    /// hundreds of screens wide at deep zoom.
+    private func drawWaveform(
+        context: GraphicsContext,
+        waveform: Waveform,
+        offsetSeconds: Double,
+        laneRect: CGRect,
+        width: CGFloat,
+        tint: Color
+    ) {
+        let midline = laneRect.midY
+        let firstColumn = Int(max(laneRect.minX, 0).rounded(.down))
+        let lastColumn = Int(min(laneRect.maxX, width).rounded(.up))
+        guard lastColumn > firstColumn else { return }
 
         var path = Path()
-        for column in 0..<columns {
-            // The envelope is stored per file, so it is sampled here rather
-            // than resampled — the lane may be wider or narrower than 900 px.
-            let fraction = Double(column) / Double(columns)
-            let index = min(peaks.count - 1, Int(fraction * Double(peaks.count)))
-            let magnitude = CGFloat(min(max(peaks[index], 0), 1))
-            let half = magnitude * rect.height / 2
+        for column in firstColumn..<lastColumn {
+            let start = seconds(forX: CGFloat(column), width: width) - offsetSeconds
+            let end = seconds(forX: CGFloat(column + 1), width: width) - offsetSeconds
+            let magnitude = CGFloat(min(max(waveform.peak(from: start, to: end), 0), 1))
+            let half = magnitude * laneRect.height / 2
             guard half > 0.2 else { continue }
-            let x = rect.minX + CGFloat(column)
+            let x = CGFloat(column)
             path.move(to: CGPoint(x: x, y: midline - half))
             path.addLine(to: CGPoint(x: x, y: midline + half))
         }
@@ -489,8 +531,14 @@ private struct LaneDragStrip: View {
                         if abs(value.translation.width) > 3 { moved = true }
                         guard moved else { return }
                         if isDraggable {
-                            let delta = value.translation.width - lastTranslation
+                            var delta = value.translation.width - lastTranslation
                             lastTranslation = value.translation.width
+                            // ⇧ gears the drag down for the last frame of a
+                            // manual sync — twenty points of hand for one
+                            // point of offset.
+                            if NSEvent.modifierFlags.contains(.shift) {
+                                delta /= 20
+                            }
                             onDrag(delta)
                         } else {
                             // The embedded lane cannot be moved, so a drag on

@@ -34,8 +34,15 @@ timecode track are lined up against the picture automatically. Everything
 else can be synced **by the sound itself**: the film's embedded track and a
 mix contain the same dialogue, so cross-correlating the two finds the offset
 a two-pop would have marked — within ±5 ms, and with a confidence readout
-that refuses a doubtful match rather than placing it. Manual nudging, typed
-offsets and lane-dragging remain.
+that refuses a doubtful match rather than placing it.
+
+Manual sync is built for the eye: the lanes draw a peak envelope fine enough
+to show single transients when zoomed in (5 ms per bucket — eight per frame
+at 25 fps), and every external lane carries a faint ghost of the film's own
+embedded track behind its waveform. Drag the lane until the two shapes cover
+each other; hold **⇧** to gear the drag down twenty to one for the last
+frame. The lane label reads out the live offset while it moves, and typed
+offsets and frame nudges remain.
 
 **Mark the switch without moving the picture.** Both halves of an audio A/B
 show the identical frame, so anything that moves is something the eye has to

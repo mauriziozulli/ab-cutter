@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.15.0 — a waveform you can sync by hand
+
+- **The lanes draw real transients now.** The envelope holds one peak per
+  five milliseconds — eight per frame at 25 fps — instead of nine hundred
+  buckets for the whole file, and every pixel column shows the loudest
+  moment of exactly the time it covers. Zooming in reveals a door, a cut,
+  a plosive; zooming out folds them through a pre-computed coarse level,
+  so a two-hour lane stays fast to draw.
+- **Every external lane carries a ghost of the film's own track.** The
+  embedded track is the sync reference, so its envelope sits faintly behind
+  each mix and stem. Manual sync is now lining two shapes up until they
+  cover each other — no two-pop, no arithmetic.
+- **⇧ while dragging a lane gears the drag down twenty to one**, for the
+  last frame of a placement. The lane label shows the live offset in
+  milliseconds while it moves.
+- **Envelopes are level-normalised for comparison** (to the 99.5th
+  percentile, so one clap can't flatten the dialogue) — a quiet camera
+  track and a mastered mix draw at the same visual size, which is what
+  makes their shapes comparable at all.
+- Fixed on the way: waveforms were being drawn far beyond both screen
+  edges at deep zoom — every redraw walked the whole file's width in
+  pixels.
+
 ## 0.14.2 — waveform sync survives its first real Mac
 
 - **Fixed: syncing by waveform crashed before analysing anything.** The
