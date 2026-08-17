@@ -156,10 +156,13 @@ enum LabelFactory {
         switch style {
         // A pill already guarantees contrast; a shadow on top only muddies it.
         case .pill: return false
-        // The house styles sit on a veil that is there precisely so type
-        // carries, and a shadow under bone on ink is just soot.
+        // The website puts `text-shadow: 0 2px 18px` on every line that lands
+        // on a photograph, and the small type needs it more than the headline
+        // does: bone at two thirds over a bright wall disappears, and the veil
+        // is weakest where the strips sit — a tenth of the way in, not at the
+        // very edge. So Auto means on here, and only Off turns it off.
         case .balken, .knochen:
-            return mode == .always
+            return mode != .off
         case .tinted:
             switch mode {
             case .always: return true

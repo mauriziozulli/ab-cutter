@@ -161,7 +161,11 @@ enum OverlayRenderer {
             .foregroundColor: Brand.leise.nsColor,
             .kern: Typography.kern(Typography.monoTracking, at: size)
         ]
-        if shadow { attributes[.shadow] = softShadow(radius: size * 0.5) }
+        // Blurred nearly a full em, rather than the website's half. Its own
+        // strips sit hard against the canvas edge, deep in the veil; these sit
+        // a tenth of the way in, where a bright wall can still swallow bone at
+        // two thirds.
+        if shadow { attributes[.shadow] = softShadow(radius: size * 0.9) }
         return attributes
     }
 
@@ -174,7 +178,14 @@ enum OverlayRenderer {
         let band = request.layout.labelBand
         // Sized against the band as well as the canvas, so the strips taking
         // their share never pushes the word out of the space left for it.
-        let ceiling = band.height > 0 ? band.height * 0.44 : size.height
+        //
+        // The second line is measured into the ceiling rather than added on
+        // top of it: the caption and its gap come to roughly four fifths of
+        // the heading again, so a ceiling set for the heading alone leaves a
+        // two-line block taller than the band it has to sit in — which is how
+        // the quiet line ended up resting on the rule below it.
+        let ratio: CGFloat = caption.isEmpty ? 0.52 : 0.34
+        let ceiling = band.height > 0 ? band.height * ratio : size.height
         let titleSize = max(20, min((size.height * 0.038).rounded(), ceiling.rounded()))
         let captionSize = max(12, (titleSize * 0.46).rounded())
         let gap = (titleSize * 0.34).rounded()
@@ -334,16 +345,18 @@ enum OverlayRenderer {
             .foregroundColor: colour,
             .kern: Typography.kern(request.style.isHouse ? Typography.serifTracking : 0.04, at: size)
         ]
-        if request.shadow { attributes[.shadow] = softShadow(radius: size * 0.6) }
+        if request.shadow { attributes[.shadow] = softShadow(radius: size * 0.8) }
         return attributes
     }
 
+    /// The website's `text-shadow: 0 2px 18px rgba(16, 16, 20, .8)`, restated:
+    /// ink rather than black, and offset a little downwards so it reads as
+    /// weight under the type rather than as a plate behind it.
     private static func softShadow(radius: CGFloat) -> NSShadow {
-        // Soft and centred, so it reads as weight rather than as a plate.
         let shadow = NSShadow()
-        shadow.shadowColor = NSColor(calibratedWhite: 0, alpha: 0.55)
+        shadow.shadowColor = Brand.tinte.withAlpha(0.8).nsColor
         shadow.shadowBlurRadius = radius
-        shadow.shadowOffset = .zero
+        shadow.shadowOffset = NSSize(width: 0, height: -radius * 0.12)
         return shadow
     }
 
