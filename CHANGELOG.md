@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.11.1 — the cards are one pair, and the type sits in its box
+
+- The title card now has the end card's arrangement: the headline set large in
+  the lead face, wrapping over up to three lines and fitted to whatever room is
+  left, with the second line at the foot over a hard rule. No bar — that stays
+  the end card's, because it is the wordmark's own arrangement. Seen one after
+  the other the two cards are recognisably the same object.
+- **Fixed:** the wordmark sat visibly high in its bar and the bar's padding was
+  not even left to right. Two separate measuring faults, both of the kind that
+  read as sloppiness rather than as a bug:
+  - `size()` counts the tracking after the final glyph as well, which is space
+    no letter uses. With the lead face's negative tracking that makes the
+    measurement *shorter* than the ink, so the field cropped the last letter
+    and the centred line sat off centre.
+  - A line box reserves room for descenders whether the text has any or not,
+    and set in capitals it never does. Building the field on the line height
+    left a quarter of an em empty under the letters and nothing above.
+  Both now go through `Typography.advance` and `Typography.capBox`, so the
+  field is built on the capitals and the baseline, and the clip label's bar
+  is fixed by the same change.
+- A headline too long for its room shrinks and wraps rather than running off
+  the card, and it is fitted against the space the foot leaves rather than
+  against the whole canvas.
+
 ## 0.11.0 — the cards can ride in the video
 
 - Title card and end card can now be built into the exported file, held at

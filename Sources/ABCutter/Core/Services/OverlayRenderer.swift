@@ -191,24 +191,33 @@ enum OverlayRenderer {
         let gap = (titleSize * 0.34).rounded()
 
         let house = request.style.isHouse
+        let titleFont = Typography.fett(titleSize)
+        let titleKern = Typography.kern(house ? Typography.fettTracking : 0.06, at: titleSize)
         let titleLine = heading.isEmpty ? nil : headingLine(request, text: heading, size: titleSize)
         let captionLine = caption.isEmpty
             ? nil
             : NSAttributedString(string: caption, attributes: captionAttributes(request, size: captionSize))
 
-        // A bar is a field, not just glyphs: it needs the padding measured
-        // into its height or the rule below it lands on the contour.
-        let barPadX = house && request.wantsBar ? (titleSize * 0.13).rounded() : 0
-        let barPadTop = house && request.wantsBar ? (titleSize * 0.14).rounded() : 0
-        let barPadBottom = house && request.wantsBar ? (titleSize * 0.12).rounded() : 0
+        // The bar is built on the capitals, not on the line box: set in
+        // capitals the type never uses the descender room, so a field sized on
+        // the line height leaves the letters visibly high in it.
+        let caps = Typography.capBox(titleFont)
+        let bars = house && request.wantsBar
+        let barPadX = bars ? (titleSize * 0.16).rounded() : 0
+        let barPadTop = bars ? (titleSize * 0.13).rounded() : 0
+        let barPadBottom = bars ? (titleSize * 0.13).rounded() : 0
 
-        let titleMeasure = titleLine?.size() ?? .zero
+        let titleWidth = titleLine.map { Typography.advance(of: $0, kern: titleKern) } ?? 0
         let captionMeasure = captionLine?.size() ?? .zero
-        let titleHeight = titleMeasure.height + barPadTop + barPadBottom
+        // Without a bar the block is still measured on the capitals, so the
+        // gap to the second line does not change with the font's descender.
+        let titleHeight = titleLine == nil
+            ? 0
+            : caps.height(padTop: barPadTop, padBottom: barPadBottom)
         let blockHeight = titleHeight
             + (titleLine != nil && captionLine != nil ? gap : 0)
             + captionMeasure.height
-        let blockWidth = max(titleMeasure.width + barPadX * 2, captionMeasure.width)
+        let blockWidth = max(titleWidth + barPadX * 2, captionMeasure.width)
         guard blockHeight > 0, blockWidth > 0 else { return }
 
         let content = FrameRenderer.contentRect(targetSize: size, safeArea: request.safeArea)
@@ -239,20 +248,23 @@ enum OverlayRenderer {
             cursor += captionMeasure.height + gap
         }
         if let titleLine {
-            let x = ((size.width - titleMeasure.width) / 2).rounded()
-            if house, request.wantsBar {
+            let x = ((size.width - titleWidth) / 2).rounded()
+            if bars {
                 drawBar(
                     request,
                     around: NSRect(
                         x: x - barPadX,
-                        y: cursor,
-                        width: titleMeasure.width + barPadX * 2,
-                        height: titleMeasure.height + barPadTop + barPadBottom
+                        y: cursor.rounded(),
+                        width: (titleWidth + barPadX * 2).rounded(),
+                        height: titleHeight.rounded()
                     ),
                     lineWidth: max(2, (titleSize * 0.07).rounded())
                 )
             }
-            titleLine.draw(at: NSPoint(x: x, y: (cursor + barPadBottom).rounded()))
+            titleLine.draw(at: NSPoint(
+                x: x,
+                y: caps.origin(fieldBottom: cursor, padBottom: barPadBottom).rounded()
+            ))
         }
     }
 

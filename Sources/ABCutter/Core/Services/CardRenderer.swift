@@ -4,14 +4,25 @@ import Foundation
 
 /// The two still cards: the one that opens a post and the one that closes it.
 ///
+/// They are deliberately the same object seen twice. Both set their line in the
+/// heavy grotesque, both carry a mono line over a hard rule at the foot, and
+/// the only difference is that the end card puts the second half of the
+/// wordmark in a field of the accent — the sticker's own arrangement — while a
+/// title card is plain type. A viewer should recognise the second card from
+/// having seen the first.
+///
 /// Separate from `OverlayRenderer` because a card carries a sentence and a
-/// wordmark, while a clip label carries a single word — they share the
-/// palette and the faces, not the layout.
+/// wordmark, while a clip label carries a single word: they share the palette,
+/// the faces and the foot, not the layout.
 @MainActor
 enum CardRenderer {
+    /// A headline never runs past this many lines; it shrinks instead.
+    private static let maximumLines = 3
+
     // MARK: - Title card
 
-    /// A large wrapping headline with an optional quieter line under it.
+    /// The card that opens a post: the headline set large in the lead face,
+    /// with the second line at the foot over a rule.
     static func titleCard(
         targetSize: CGSize,
         headline: String,
@@ -30,80 +41,60 @@ enum CardRenderer {
         return draw(targetSize: targetSize) { size in
             let content = FrameRenderer.contentRect(targetSize: size, safeArea: safeArea)
             let side = (size.width * FrameRenderer.sideMarginFraction).rounded()
-            let textWidth = size.width - side * 2
-
-            let titleSize = max(28, (size.height * 0.072).rounded())
-            let captionSize = max(14, (titleSize * 0.34).rounded())
-            let gap = (titleSize * 0.4).rounded()
-
-            let paragraph = NSMutableParagraphStyle()
-            paragraph.alignment = .center
-            paragraph.lineHeightMultiple = 0.96
-
             let colour = house
                 ? Brand.knochen.nsColor
                 : NSColor(srgbRed: tint.red, green: tint.green, blue: tint.blue, alpha: 1)
-            // The quieter line takes the accent, the way a kicker does on the
-            // website's detail layer.
-            let captionColour = house
-                ? accent.nsColor
-                : colour.withAlphaComponent(0.85)
 
-            var titleAttributes: [NSAttributedString.Key: Any] = [
-                .font: house ? Typography.fett(titleSize) : NSFont.systemFont(ofSize: titleSize, weight: .bold),
-                .foregroundColor: colour,
-                .paragraphStyle: paragraph,
-                .kern: Typography.kern(house ? -0.045 : 0.01, at: titleSize)
-            ]
-            var captionAttributes: [NSAttributedString.Key: Any] = [
-                .font: house ? Typography.mono(captionSize) : NSFont.systemFont(ofSize: captionSize, weight: .medium),
-                .foregroundColor: captionColour,
-                .paragraphStyle: paragraph,
-                .kern: Typography.kern(house ? Typography.monoTracking : 0.05, at: captionSize)
-            ]
-            if shadow {
-                titleAttributes[.shadow] = shadowBox(titleSize * 0.22)
-                captionAttributes[.shadow] = shadowBox(captionSize * 0.9)
-            }
+            // The foot is placed first: it decides how much room the headline
+            // has, rather than the other way round.
+            let footTop = drawFoot(
+                size: size, content: content, side: side,
+                primary: caption, secondary: "",
+                accent: house ? accent : Brand.Colour(red: tint.red, green: tint.green, blue: tint.blue),
+                house: house, shadow: shadow
+            )
 
-            let titleText = title.isEmpty
-                ? nil
-                : NSAttributedString(string: house ? title.uppercased() : title, attributes: titleAttributes)
-            let captionText = caption.isEmpty
-                ? nil
-                : NSAttributedString(
-                    string: house ? caption.uppercased() : caption,
-                    attributes: captionAttributes
-                )
-
-            let bounds = CGSize(width: textWidth, height: .greatestFiniteMagnitude)
-            let options: NSString.DrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
-            let titleHeight = titleText?.boundingRect(with: bounds, options: options).height.rounded(.up) ?? 0
-            let captionHeight = captionText?.boundingRect(with: bounds, options: options).height.rounded(.up) ?? 0
-            let blockHeight = titleHeight + (titleText != nil && captionText != nil ? gap : 0) + captionHeight
+            guard !title.isEmpty else { return }
 
             let edge = (size.height * 0.085).rounded()
-            let blockTop: CGFloat
-            switch position {
-            case .top: blockTop = content.maxY - edge
-            case .centre: blockTop = (size.height + blockHeight) / 2
-            case .bottom: blockTop = content.minY + edge + blockHeight
-            }
+            let floor = (footTop ?? content.minY) + edge * 0.6
+            let ceiling = content.maxY - edge
 
-            // `usesLineFragmentOrigin` flows text downward from the top of the rect.
-            var cursor = blockTop
-            if let titleText {
-                titleText.draw(
-                    with: CGRect(x: side, y: cursor - titleHeight, width: textWidth, height: titleHeight),
-                    options: options
-                )
-                cursor -= titleHeight + gap
+            let nominal = min(size.width * 0.135, size.height * 0.10).rounded()
+            let fitted = fit(
+                title.uppercased(),
+                nominal: nominal,
+                available: size.width - side * 2,
+                room: ceiling - floor,
+                house: house
+            )
+            guard !fitted.lines.isEmpty else { return }
+
+            let font = leadFace(fitted.size, house: house)
+            let kern = leadKern(fitted.size, house: house)
+            let caps = Typography.capBox(font)
+            let lineGap = (fitted.size * 0.12).rounded()
+            let blockHeight = CGFloat(fitted.lines.count) * caps.capHeight
+                + CGFloat(fitted.lines.count - 1) * lineGap
+
+            var blockTop: CGFloat
+            switch position {
+            case .top: blockTop = ceiling
+            case .centre: blockTop = ((floor + ceiling) / 2 + blockHeight / 2).rounded()
+            case .bottom: blockTop = floor + blockHeight
             }
-            if let captionText {
-                captionText.draw(
-                    with: CGRect(x: side, y: cursor - captionHeight, width: textWidth, height: captionHeight),
-                    options: options
-                )
+            blockTop = min(max(blockTop, floor + blockHeight), ceiling)
+
+            // Drawn top line first, walking down.
+            var baselineTop = blockTop
+            for line in fitted.lines {
+                let attributed = capsLine(line, font: font, kern: kern, colour: colour, shadow: shadow)
+                let width = Typography.advance(of: attributed, kern: kern)
+                attributed.draw(at: NSPoint(
+                    x: ((size.width - width) / 2).rounded(),
+                    y: caps.origin(fieldBottom: baselineTop - caps.capHeight, padBottom: 0).rounded()
+                ))
+                baselineTop -= caps.capHeight + lineGap
             }
         }
     }
@@ -111,12 +102,8 @@ enum CardRenderer {
     // MARK: - End card
 
     /// The card that closes a post: the wordmark in the sticker's own
-    /// arrangement — first line plain, second line in a field of the accent —
-    /// with the address under a rule at the foot.
-    ///
-    /// Everything here is fitted to the canvas rather than set at a fixed
-    /// size, because the wordmark is the widest thing the app draws and a 4:5
-    /// card is 1080 across whatever the words are.
+    /// arrangement — first line plain, second in a field of the accent — with
+    /// the address under a rule at the foot.
     static func endCard(
         targetSize: CGSize,
         wordmarkTop: String,
@@ -135,168 +122,280 @@ enum CardRenderer {
         return draw(targetSize: targetSize) { size in
             let content = FrameRenderer.contentRect(targetSize: size, safeArea: safeArea)
             let side = (size.width * FrameRenderer.sideMarginFraction).rounded()
-            let available = size.width - side * 2
 
-            // The bar's own padding is part of its width, so it is measured
-            // into the fit rather than discovered afterwards.
-            let nominal = min(size.width * 0.145, size.height * 0.115).rounded()
-            let wordSize = fittedSize(
-                lines: [(top, 0.0), (bar, 0.26)],
-                nominal: nominal,
-                available: available
+            let footTop = drawFoot(
+                size: size, content: content, side: side,
+                primary: line, secondary: footnote,
+                accent: accent, house: true, shadow: false
             )
-            let padX = (wordSize * 0.13).rounded()
-            let padTop = (wordSize * 0.14).rounded()
-            let padBottom = (wordSize * 0.12).rounded()
 
-            let topLine = top.isEmpty ? nil : wordmarkLine(top, size: wordSize, colour: Brand.knochen.nsColor)
-            let barLine = bar.isEmpty ? nil : wordmarkLine(bar, size: wordSize, colour: accent.onAccent.nsColor)
+            guard !top.isEmpty || !bar.isEmpty else { return }
 
-            let topMeasure = topLine?.size() ?? .zero
-            let barMeasure = barLine?.size() ?? .zero
-            let barHeight = barLine == nil ? 0 : barMeasure.height + padTop + padBottom
-            let lineGap = (wordSize * 0.1).rounded()
-            let blockHeight = topMeasure.height
+            // The bar's padding is part of its width, so it is measured into
+            // the fit rather than discovered after the fact.
+            let nominal = min(size.width * 0.145, size.height * 0.115).rounded()
+            let padRatio: CGFloat = 0.32
+            let wordSize = fitSingles(
+                [(top, 0), (bar, padRatio)],
+                nominal: nominal,
+                available: size.width - side * 2
+            )
+
+            let font = leadFace(wordSize, house: true)
+            let kern = leadKern(wordSize, house: true)
+            let caps = Typography.capBox(font)
+            let padX = (wordSize * 0.16).rounded()
+            let padY = (wordSize * 0.13).rounded()
+
+            let topLine = top.isEmpty
+                ? nil
+                : capsLine(top, font: font, kern: kern, colour: Brand.knochen.nsColor, shadow: false)
+            let barLine = bar.isEmpty
+                ? nil
+                : capsLine(bar, font: font, kern: kern, colour: accent.onAccent.nsColor, shadow: false)
+
+            let lineGap = (wordSize * 0.12).rounded()
+            let barHeight = barLine == nil ? 0 : caps.height(padTop: padY, padBottom: padY)
+            let blockHeight = (topLine == nil ? 0 : caps.capHeight)
                 + (topLine != nil && barLine != nil ? lineGap : 0)
                 + barHeight
 
-            // The wordmark sits a little above the middle, so the address at
-            // the foot does not look like an afterthought hanging off it.
+            // A little above centre, so the address at the foot does not read
+            // as something hanging off the wordmark.
+            let bottomLimit = (footTop ?? content.minY) + (size.height * 0.05).rounded()
             var cursor = (content.midY + blockHeight / 2 + content.height * 0.06).rounded()
+            cursor = min(max(cursor, bottomLimit + blockHeight), content.maxY)
 
             if let topLine {
-                cursor -= topMeasure.height
-                topLine.draw(at: NSPoint(x: ((size.width - topMeasure.width) / 2).rounded(), y: cursor.rounded()))
+                cursor -= caps.capHeight
+                let width = Typography.advance(of: topLine, kern: kern)
+                topLine.draw(at: NSPoint(
+                    x: ((size.width - width) / 2).rounded(),
+                    y: caps.origin(fieldBottom: cursor, padBottom: 0).rounded()
+                ))
                 cursor -= lineGap
             }
+
             if let barLine {
                 cursor -= barHeight
+                let width = Typography.advance(of: barLine, kern: kern)
                 let field = NSRect(
-                    x: ((size.width - barMeasure.width) / 2 - padX).rounded(),
+                    x: ((size.width - width) / 2 - padX).rounded(),
                     y: cursor.rounded(),
-                    width: (barMeasure.width + padX * 2).rounded(),
+                    width: (width + padX * 2).rounded(),
                     height: barHeight.rounded()
                 )
-                let radius = (field.height * 0.1).rounded()
-                accent.nsColor.setFill()
-                NSBezierPath(roundedRect: field, xRadius: radius, yRadius: radius).fill()
-
-                let contourWidth = max(2, (wordSize * 0.07).rounded())
-                let contour = NSBezierPath(
-                    roundedRect: field.insetBy(dx: contourWidth / 2, dy: contourWidth / 2),
-                    xRadius: radius, yRadius: radius
-                )
-                contour.lineWidth = contourWidth
-                Brand.tinte.nsColor.setStroke()
-                contour.stroke()
-
+                drawBar(field, accent: accent, lineWidth: max(2, (wordSize * 0.07).rounded()))
                 barLine.draw(at: NSPoint(
-                    x: ((size.width - barMeasure.width) / 2).rounded(),
-                    y: (cursor + padBottom).rounded()
+                    x: ((size.width - width) / 2).rounded(),
+                    y: caps.origin(fieldBottom: cursor, padBottom: padY).rounded()
                 ))
             }
-
-            drawFoot(
-                size: size, content: content, side: side,
-                address: line, note: footnote, accent: accent
-            )
         }
     }
 
-    /// Address and note at the foot, over a hard rule — the same furniture as
-    /// the bottom strip of a clip, so a post's last image belongs to the cut
-    /// that came before it.
+    // MARK: - Shared furniture
+
+    /// The bar: a field in the accent with a hard contour in ink, the
+    /// `.balken` rule from `global.css`. The contour is what makes it read as
+    /// printed rather than as a highlighter.
+    private static func drawBar(_ rect: NSRect, accent: Brand.Colour, lineWidth: CGFloat) {
+        let radius = (rect.height * 0.1).rounded()
+        accent.nsColor.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+
+        let contour = NSBezierPath(
+            roundedRect: rect.insetBy(dx: lineWidth / 2, dy: lineWidth / 2),
+            xRadius: radius, yRadius: radius
+        )
+        contour.lineWidth = lineWidth
+        Brand.tinte.nsColor.setStroke()
+        contour.stroke()
+    }
+
+    /// A mono line in the accent and a quieter serif line under it, over a hard
+    /// rule — the same furniture as the bottom strip of a clip, so both cards
+    /// belong to the cut they sit around.
+    ///
+    /// Returns the rule's own height in the canvas, so a caller knows how much
+    /// room is left above it. Nil when there was nothing to draw.
+    @discardableResult
     private static func drawFoot(
         size: CGSize, content: CGRect, side: CGFloat,
-        address: String, note: String, accent: Brand.Colour
-    ) {
-        guard !address.isEmpty || !note.isEmpty else { return }
+        primary: String, secondary: String,
+        accent: Brand.Colour, house: Bool, shadow: Bool
+    ) -> CGFloat? {
+        guard !primary.isEmpty || !secondary.isEmpty else { return nil }
 
-        let addressSize = max(13, (size.height * 0.019).rounded())
-        let noteSize = max(12, (addressSize * 0.92).rounded())
+        let primarySize = max(13, (size.height * 0.019).rounded())
+        let secondarySize = max(12, (primarySize * 0.92).rounded())
         let ruleWidth = max(2, (size.height * Brand.ruleFraction).rounded())
-        let gap = (addressSize * 0.9).rounded()
+        let gap = (primarySize * 0.9).rounded()
 
-        let addressLine = address.isEmpty ? nil : NSAttributedString(
-            string: address.uppercased(),
+        let primaryFont = house
+            ? Typography.mono(primarySize)
+            : NSFont.systemFont(ofSize: primarySize, weight: .semibold)
+        let primaryKern = Typography.kern(0.18, at: primarySize)
+        let primaryLine = primary.isEmpty ? nil : NSAttributedString(
+            string: primary.uppercased(),
             attributes: [
-                .font: Typography.mono(addressSize),
-                // The address is the point of the card, so it takes the accent
-                // rather than the muted bone the strips use.
+                .font: primaryFont,
+                // The address is the point of an end card, so it takes the
+                // accent rather than the muted bone the clip strips use.
                 .foregroundColor: accent.nsColor,
-                .kern: Typography.kern(0.18, at: addressSize)
+                .kern: primaryKern
             ]
         )
-        let noteLine = note.isEmpty ? nil : NSAttributedString(
-            string: note,
+        let secondaryKern = Typography.kern(Typography.serifTracking, at: secondarySize)
+        let secondaryLine = secondary.isEmpty ? nil : NSAttributedString(
+            string: secondary,
             attributes: [
-                .font: Typography.serif(noteSize * 1.18),
+                .font: house
+                    ? Typography.serif(secondarySize * 1.18)
+                    : NSFont.systemFont(ofSize: secondarySize, weight: .regular),
                 .foregroundColor: Brand.knochen.withAlpha(0.7).nsColor,
-                .kern: Typography.kern(Typography.serifTracking, at: noteSize)
+                .kern: secondaryKern
             ]
         )
 
-        let addressMeasure = addressLine?.size() ?? .zero
-        let noteMeasure = noteLine?.size() ?? .zero
-        let footHeight = addressMeasure.height
-            + (addressLine != nil && noteLine != nil ? gap * 0.5 : 0)
-            + noteMeasure.height
+        let primaryCaps = Typography.capBox(primaryFont)
+        let primaryHeight = primaryLine == nil ? 0 : primaryCaps.capHeight
+        let secondaryHeight = secondaryLine?.size().height ?? 0
+        let footHeight = primaryHeight
+            + (primaryLine != nil && secondaryLine != nil ? gap * 0.6 : 0)
+            + secondaryHeight
 
         let bottom = content.minY + (content.height * 0.06).rounded()
         var cursor = bottom
-        if let noteLine {
-            noteLine.draw(at: NSPoint(x: ((size.width - noteMeasure.width) / 2).rounded(), y: cursor.rounded()))
-            cursor += noteMeasure.height + gap * 0.5
+        if let secondaryLine {
+            let width = Typography.advance(of: secondaryLine, kern: secondaryKern)
+            secondaryLine.draw(at: NSPoint(x: ((size.width - width) / 2).rounded(), y: cursor.rounded()))
+            cursor += secondaryHeight + gap * 0.6
         }
-        if let addressLine {
-            addressLine.draw(at: NSPoint(
-                x: ((size.width - addressMeasure.width) / 2).rounded(),
-                y: cursor.rounded()
+        if let primaryLine {
+            let width = Typography.advance(of: primaryLine, kern: primaryKern)
+            primaryLine.draw(at: NSPoint(
+                x: ((size.width - width) / 2).rounded(),
+                y: primaryCaps.origin(fieldBottom: cursor, padBottom: 0).rounded()
             ))
         }
 
+        let ruleY = (bottom + footHeight + gap).rounded()
         Brand.knochen.withAlpha(Brand.ruleAlpha).nsColor.setFill()
-        NSRect(
-            x: side,
-            y: (bottom + footHeight + gap).rounded(),
-            width: size.width - side * 2,
-            height: ruleWidth
-        ).fill()
+        NSRect(x: side, y: ruleY, width: size.width - side * 2, height: ruleWidth).fill()
+        return ruleY + ruleWidth
     }
 
-    // MARK: - Helpers
+    // MARK: - Fitting
 
-    /// Largest size at which every line still fits the available width.
-    /// `slack` is the extra width a line carries beyond its glyphs, as a
-    /// fraction of the size — the bar's padding and contour.
-    private static func fittedSize(
-        lines: [(String, CGFloat)], nominal: CGFloat, available: CGFloat
+    private static func leadFace(_ size: CGFloat, house: Bool) -> NSFont {
+        house ? Typography.fett(size) : NSFont.systemFont(ofSize: size, weight: .bold)
+    }
+
+    private static func leadKern(_ size: CGFloat, house: Bool) -> CGFloat {
+        Typography.kern(house ? -0.045 : 0.01, at: size)
+    }
+
+    private static func capsLine(
+        _ text: String, font: NSFont, kern: CGFloat, colour: NSColor, shadow: Bool
+    ) -> NSAttributedString {
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: colour,
+            .kern: kern
+        ]
+        if shadow {
+            let drop = NSShadow()
+            drop.shadowColor = Brand.tinte.withAlpha(0.8).nsColor
+            drop.shadowBlurRadius = font.pointSize * 0.24
+            drop.shadowOffset = NSSize(width: 0, height: -font.pointSize * 0.02)
+            attributes[.shadow] = drop
+        }
+        return NSAttributedString(string: text, attributes: attributes)
+    }
+
+    /// Largest size at which every one of these single lines fits the width.
+    /// `slack` is extra width the line carries beyond its glyphs, as a
+    /// fraction of the size — a bar's padding and contour.
+    private static func fitSingles(
+        _ lines: [(String, CGFloat)], nominal: CGFloat, available: CGFloat
     ) -> CGFloat {
         var size = nominal
         for (text, slack) in lines where !text.isEmpty {
-            let measured = wordmarkLine(text, size: nominal, colour: .black).size().width
-                + nominal * slack
+            let font = leadFace(nominal, house: true)
+            let kern = leadKern(nominal, house: true)
+            let measured = Typography.advance(
+                of: capsLine(text, font: font, kern: kern, colour: .black, shadow: false),
+                kern: kern
+            ) + nominal * slack
             guard measured > available, measured > 0 else { continue }
             size = min(size, (nominal * available / measured).rounded(.down))
         }
         return max(size, 12)
     }
 
-    private static func wordmarkLine(_ text: String, size: CGFloat, colour: NSColor) -> NSAttributedString {
-        NSAttributedString(string: text, attributes: [
-            .font: Typography.fett(size),
-            .foregroundColor: colour,
-            .kern: Typography.kern(Typography.fettTracking, at: size)
-        ])
+    /// Wraps a headline and shrinks it until it fits both the width and the
+    /// room left between the foot and the top of the safe area.
+    private static func fit(
+        _ text: String, nominal: CGFloat, available: CGFloat, room: CGFloat, house: Bool
+    ) -> (size: CGFloat, lines: [String]) {
+        var size = max(nominal, 14)
+        while size > 14 {
+            let font = leadFace(size, house: house)
+            let kern = leadKern(size, house: house)
+            let lines = wrap(text, font: font, kern: kern, available: available)
+            let caps = Typography.capBox(font)
+            let height = CGFloat(lines.count) * caps.capHeight
+                + CGFloat(max(lines.count - 1, 0)) * (size * 0.12).rounded()
+            if lines.count <= maximumLines, height <= room, fits(lines, font: font, kern: kern, available: available) {
+                return (size, lines)
+            }
+            size = (size * 0.94).rounded(.down)
+        }
+        let font = leadFace(size, house: house)
+        return (size, wrap(text, font: font, kern: leadKern(size, house: house), available: available))
     }
 
-    private static func shadowBox(_ radius: CGFloat) -> NSShadow {
-        let shadow = NSShadow()
-        shadow.shadowColor = NSColor(calibratedWhite: 0, alpha: 0.6)
-        shadow.shadowBlurRadius = radius
-        shadow.shadowOffset = .zero
-        return shadow
+    private static func fits(
+        _ lines: [String], font: NSFont, kern: CGFloat, available: CGFloat
+    ) -> Bool {
+        lines.allSatisfy {
+            Typography.advance(
+                of: capsLine($0, font: font, kern: kern, colour: .black, shadow: false),
+                kern: kern
+            ) <= available
+        }
     }
+
+    /// Greedy word wrap. A single word longer than the line is left alone —
+    /// the size loop shrinks it instead of hyphenating something nobody asked
+    /// to be hyphenated.
+    private static func wrap(
+        _ text: String, font: NSFont, kern: CGFloat, available: CGFloat
+    ) -> [String] {
+        let words = text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        guard !words.isEmpty else { return [] }
+
+        var lines: [String] = []
+        var current = ""
+        for word in words {
+            let candidate = current.isEmpty ? word : current + " " + word
+            let width = Typography.advance(
+                of: capsLine(candidate, font: font, kern: kern, colour: .black, shadow: false),
+                kern: kern
+            )
+            if width <= available || current.isEmpty {
+                current = candidate
+            } else {
+                lines.append(current)
+                current = word
+            }
+        }
+        if !current.isEmpty { lines.append(current) }
+        return lines
+    }
+
+    // MARK: - Canvas
 
     private static func draw(targetSize: CGSize, _ body: (CGSize) -> Void) -> CGImage? {
         let width = Int(targetSize.width.rounded())

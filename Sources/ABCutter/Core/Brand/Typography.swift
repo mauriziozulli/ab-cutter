@@ -97,4 +97,47 @@ enum Typography {
     static let serifTracking: CGFloat = -0.015
     /// `letter-spacing: .14em` on the small type.
     static let monoTracking: CGFloat = 0.14
+
+    // MARK: - Measuring a line honestly
+
+    /// The width a line actually occupies.
+    ///
+    /// `size()` counts the tracking after the final glyph as well, which is
+    /// space no letter uses. With negative tracking on the lead face that
+    /// makes the measurement *shorter* than the ink, so a field built on it
+    /// crops the last letter and a centred line sits off centre. Both are
+    /// small enough to look like sloppiness rather than a bug, which is
+    /// exactly why this belongs in one place.
+    static func advance(of line: NSAttributedString, kern: CGFloat) -> CGFloat {
+        max(line.size().width - kern, 0)
+    }
+
+    /// Where the capitals sit inside a line box.
+    ///
+    /// A line box reserves room for descenders whether or not the text has
+    /// any, and set in capitals it never does. Building a field on the line
+    /// height therefore leaves a quarter of an em of empty space under the
+    /// letters and none above, so the type looks as though it has slipped.
+    /// A field has to be built on the cap height and the baseline instead.
+    struct CapBox {
+        var capHeight: CGFloat
+        /// Negative, as AppKit reports it.
+        var descender: CGFloat
+
+        /// Height of a field holding these capitals with the given padding.
+        func height(padTop: CGFloat, padBottom: CGFloat) -> CGFloat {
+            capHeight + padTop + padBottom
+        }
+
+        /// Where to draw so the capitals sit `padBottom` above the field's
+        /// lower edge. `draw(at:)` takes the lower-left of the line box, and
+        /// the baseline sits one descender above that.
+        func origin(fieldBottom: CGFloat, padBottom: CGFloat) -> CGFloat {
+            fieldBottom + padBottom + descender
+        }
+    }
+
+    static func capBox(_ font: NSFont) -> CapBox {
+        CapBox(capHeight: font.capHeight, descender: font.descender)
+    }
 }
