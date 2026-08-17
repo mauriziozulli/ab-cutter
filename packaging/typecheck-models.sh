@@ -104,6 +104,7 @@ func run() throws {
     var project = ABProject()
     var loop = Clip(name: "Loop 1", start: 5, end: 15, kind: .loop)
     loop.loopPasses = 2
+    loop.look.cardHeadline = "Szene 14"
     loop.look.afterColor = RGBColor(red: 0.1, green: 0.2, blue: 0.9)
     loop.look.beforeColor = .white
     var ab = Clip(name: "Clip 1", start: 20, end: 40)
@@ -118,6 +119,8 @@ func run() throws {
           "A round trip lost a free colour.")
     check(restored.clips[1].look.afterColor == RGBColor.ocker,
           "The clips' looks bled into each other.")
+    check(restored.clips[0].look.cardHeadline == "Szene 14",
+          "A round trip lost a clip's card headline.")
     check(restored.export.chromeSafeTop == 0.17, "A round trip changed a delivery setting.")
 
     // Loop semantics: no switches inside the selection — the boundary lies

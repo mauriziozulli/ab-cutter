@@ -1,10 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// The selected clip's look. The design itself is fixed — framed picture over
-/// a blurred backdrop, colour video, one small type style — so what remains
-/// here is what actually varies from clip to clip: the two side colours, the
-/// texts, and a few quiet dials.
+/// The selected clip's look and its card texts. The design itself is fixed —
+/// framed colour picture over a blurred backdrop, one small type style — so
+/// what is edited here is only what genuinely varies from clip to clip.
 @MainActor
 struct ClipLookPanel: View {
     @ObservedObject var state: AppState
@@ -13,8 +12,7 @@ struct ClipLookPanel: View {
         VStack(alignment: .leading, spacing: 16) {
             colourSection
             textSection
-            stripsSection
-            fineSection
+            cardSection
         }
     }
 
@@ -25,12 +23,26 @@ struct ClipLookPanel: View {
             colourRow(label: "A (vorher)", keyPath: \.beforeColor)
             colourRow(label: "B (nachher)", keyPath: \.afterColor)
 
-            Text("Rahmen und Schrift einer Seite tragen dieselbe Farbe — der Wechsel liest sich dann als ein Ereignis. Weiss für A und Blau für B ist z. B. ein Klick auf das Feld.")
+            labelledSlider(
+                "Grösse",
+                value: state.lookBinding(\.insetScale),
+                range: 0.6...0.98,
+                readout: "\(Int((state.selectedClip?.look.insetScale ?? 0.86) * 100)) %"
+            )
+
+            Picker("Einpassen", selection: state.lookBinding(\.fitMode)) {
+                ForEach(FitMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .controlSize(.small)
+
+            Text("Rahmen und Schrift einer Seite tragen dieselbe Farbe — der Wechsel liest sich als ein Ereignis.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
         .abCard()
-        .abSection("Farben")
+        .abSection("Farben & Rahmen")
     }
 
     private func colourRow(
@@ -95,7 +107,7 @@ struct ClipLookPanel: View {
         )
     }
 
-    // MARK: - Text
+    // MARK: - Burnt-in text
 
     private var textSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -116,18 +128,10 @@ struct ClipLookPanel: View {
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
             }
-        }
-        .abCard()
-        .abSection("Text")
-    }
 
-    // MARK: - Strips
-
-    private var stripsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
             Toggle("Zeilen oben und unten", isOn: state.lookBinding(\.showStrips))
                 .toggleStyle(.checkbox)
-                .help("Mono-Zeile mit harter Linie an beiden Enden")
+                .help("Mono-Zeile mit harter Linie an beiden Enden — oben rechts steht die Tonspur, die gerade läuft")
 
             if state.selectedClip?.look.showStrips == true {
                 TextField("Oben links — leer nimmt den Filmnamen", text: state.lookBinding(\.stripLeft))
@@ -139,64 +143,35 @@ struct ClipLookPanel: View {
                 TextField("Unten rechts — Adresse", text: state.lookBinding(\.stripAddress))
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
-
-                Text("Oben rechts steht die Tonspur, die gerade läuft — sie wechselt mit dem A/B.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
             }
         }
         .abCard()
-        .abSection("Zeilen")
+        .abSection("Text im Bild")
     }
 
-    // MARK: - The quiet dials
+    // MARK: - This clip's cards
 
-    private var fineSection: some View {
+    /// A different selection often needs a different title, so the two cards
+    /// can be worded per clip. The pictures already are per clip: each card
+    /// is built from that clip's own first frame at export.
+    private var cardSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            labelledSlider(
-                "Grösse",
-                value: state.lookBinding(\.insetScale),
-                range: 0.6...0.98,
-                readout: "\(Int((state.selectedClip?.look.insetScale ?? 0.86) * 100)) %"
-            )
+            TextField("Titel dieses Clips", text: state.lookBinding(\.cardHeadline))
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
+            TextField("Untertitel", text: state.lookBinding(\.cardSubline))
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
+            TextField("Abspann-Zusatz", text: state.lookBinding(\.cardNote))
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
 
-            Picker("Einpassen", selection: state.lookBinding(\.fitMode)) {
-                ForEach(FitMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
-                }
-            }
-            .controlSize(.small)
-
-            labelledSlider(
-                "Korn",
-                value: state.lookBinding(\.grainStrength),
-                range: 0...0.6,
-                readout: "\(Int((state.selectedClip?.look.grainStrength ?? 0) * 100)) %"
-            )
-            labelledSlider(
-                "Schleier",
-                value: state.lookBinding(\.vignetteStrength),
-                range: 0...0.9,
-                readout: "\(Int((state.selectedClip?.look.vignetteStrength ?? 0) * 100)) %"
-            )
-            labelledSlider(
-                "Überblende",
-                value: state.lookBinding(\.audioCrossfadeMilliseconds),
-                range: 0...500,
-                readout: "\(Int(state.selectedClip?.look.audioCrossfadeMilliseconds ?? 40)) ms"
-            )
-
-            if !Typography.housefacesAvailable {
-                Label(
-                    "Die Hausschriften liessen sich nicht laden — gesetzt wird in Arial Black, Didot und Courier.",
-                    systemImage: "exclamationmark.triangle"
-                )
+            Text("Leere Felder übernehmen die Texte vom Titelbild-Reiter, der Titel zuletzt den Filmnamen. Das Bild der Karte ist immer das erste Bild dieses Clips.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            }
         }
         .abCard()
-        .abSection("Rahmen & Textur")
+        .abSection("Karten dieses Clips")
     }
 
     // MARK: - Helpers

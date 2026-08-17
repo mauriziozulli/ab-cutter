@@ -326,7 +326,13 @@ final class PlayerController: ObservableObject {
 
     func play() {
         guard player.currentItem != nil else { return }
-        if let playbackLimit, currentTime >= playbackLimit.upperBound - 0.01 {
+        // Only a playhead parked *at* the clip's end restarts at its head —
+        // that is "play it again". Parked anywhere else, even past the clip,
+        // playback starts exactly where the playhead stands: the limit is a
+        // stop line, not a magnet.
+        if let playbackLimit,
+           currentTime >= playbackLimit.upperBound - 0.01,
+           currentTime <= playbackLimit.upperBound + 0.1 {
             seek(to: playbackLimit.lowerBound)
         }
         player.play()
@@ -361,11 +367,19 @@ final class PlayerController: ObservableObject {
             guard seconds.isFinite else { return }
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                // Crossing the clip's end from inside stops the transport.
+                // Playback that never was inside the clip runs free — the
+                // limit is there to end a clip audition, not to fence the
+                // rest of the film off.
+                let crossedEnd = self.playbackLimit.map {
+                    self.currentTime < $0.upperBound && seconds >= $0.upperBound
+                        && seconds >= $0.lowerBound
+                } ?? false
                 self.currentTime = seconds
 
-                if let limit = self.playbackLimit, self.isPlaying, seconds >= limit.upperBound {
+                if crossedEnd, self.isPlaying {
                     self.pause()
-                    self.seek(to: limit.upperBound)
+                    self.seek(to: self.playbackLimit?.upperBound ?? seconds)
                 }
             }
         }

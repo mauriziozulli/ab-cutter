@@ -537,12 +537,21 @@ struct ClipLook: Codable, Hashable {
     var vignetteStrength: Double = 0.55
     /// Length of the audio crossfade at each seam, in milliseconds.
     var audioCrossfadeMilliseconds: Double = 40
+    /// This clip's own title card headline. Empty falls back to the Cover
+    /// tab's text and then to the film's name — a different selection often
+    /// needs a different title, and the card is built from this clip's own
+    /// first frame anyway.
+    var cardHeadline: String = ""
+    var cardSubline: String = ""
+    /// The quiet line on this clip's end card. Empty falls back likewise.
+    var cardNote: String = ""
 
     private enum CodingKeys: String, CodingKey {
         case beforeColor, afterColor, fitMode, insetScale
         case showLabels, beforeLabel, afterLabel, subtitleText
         case showStrips, stripLeft, stripNote, stripAddress
         case grainStrength, vignetteStrength, audioCrossfadeMilliseconds
+        case cardHeadline, cardSubline, cardNote
     }
 
     /// A look written while the accent was one of five named colours. Its own
@@ -576,6 +585,9 @@ struct ClipLook: Codable, Hashable {
         if let value = try? box.decode(Double.self, forKey: .audioCrossfadeMilliseconds) {
             audioCrossfadeMilliseconds = value
         }
+        if let value = try? box.decode(String.self, forKey: .cardHeadline) { cardHeadline = value }
+        if let value = try? box.decode(String.self, forKey: .cardSubline) { cardSubline = value }
+        if let value = try? box.decode(String.self, forKey: .cardNote) { cardNote = value }
 
         if (try? box.decode(RGBColor.self, forKey: .afterColor)) == nil,
            let legacy = try? decoder.container(keyedBy: LegacyCodingKeys.self),

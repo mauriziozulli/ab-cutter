@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.14.0 — cards per clip, three cards per clip panel, and a free playhead
+
+- **Each clip words its own two cards.** Titel, Untertitel and Abspann-Zusatz
+  sit on the clip now, next to its colours — a different selection needs a
+  different title. Empty fields fall back to the Cover tab's texts, the title
+  finally to the film's name. The pictures were already per clip: every card
+  is built from that clip's own first frame at export.
+- **The clip panel is three cards now**: Farben & Rahmen, Text im Bild,
+  Karten dieses Clips. The Korn, Schleier and Überblende sliders are gone —
+  they keep their house values (26 %, 55 %, 40 ms) without asking. Stored
+  projects keep whatever they had chosen.
+- **Fixed: the playhead could not be set free.** Three faults, one feeling:
+  - A click anywhere inside a selected clip's span jumped the playhead to the
+    clip's start, every time. Now only selecting a clip parks the playhead at
+    its head; a click on the *already selected* clip places the playhead
+    exactly where clicked.
+  - The audio lanes swallowed clicks entirely, leaving only the thin ruler
+    for scrubbing. A click on any lane now places the playhead; dragging an
+    external lane still slides its sync, and dragging the embedded lane
+    scrubs.
+  - With "Im Clip bleiben" on, pressing play with the playhead outside the
+    clip snapped back into it. The limit is a stop line now, not a magnet:
+    playback starts where the playhead stands and only stops when it crosses
+    the clip's end from inside. Parked exactly at the end, play still means
+    "play it again".
+
 ## 0.13.0 — the design is fixed, the colours are yours, and the sound syncs itself
 
 Simplification, on request. The design vocabulary that had grown — grades,

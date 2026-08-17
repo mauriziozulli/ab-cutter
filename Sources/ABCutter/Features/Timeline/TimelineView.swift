@@ -409,14 +409,23 @@ struct TimelineView: View {
                         let delta = Double(value.translation.width / max(width, 1)) * visibleDuration
                         applyClipDrag(clipDrag, delta: delta)
                     }
-                    .onEnded { _ in
+                    .onEnded { value in
                         guard let finished = clipDrag else { return }
                         clipDrag = nil
                         if finished.moved {
                             // One rebuild at the end rather than one per pixel.
                             state.applyPlayerSettings()
                         } else if let clip = state.project.clips.first(where: { $0.id == finished.clipID }) {
-                            state.selectClip(clip)
+                            if clip.id == state.selectedClipID {
+                                // The clip is already selected: this click is
+                                // about the playhead, not the selection. The
+                                // first click parks at the head; every later
+                                // one is free — otherwise the playhead could
+                                // never be placed inside the clip at all.
+                                player.seek(to: seconds(forX: value.location.x, width: width))
+                            } else {
+                                state.selectClip(clip)
+                            }
                         }
                     }
             )
@@ -435,6 +444,9 @@ struct TimelineView: View {
                     onDrag: { translation in
                         let delta = Double(translation / max(width, 1)) * visibleDuration
                         state.shiftOffset(delta, forSourceID: source.id)
+                    },
+                    onScrub: { x in
+                        player.seek(to: seconds(forX: x, width: width))
                     }
                 )
             }
@@ -460,22 +472,37 @@ private struct LaneDragStrip: View {
     let height: CGFloat
     let isDraggable: Bool
     let onDrag: (CGFloat) -> Void
+    /// A plain click on a lane places the playhead. Without this the lanes
+    /// swallow clicks, and the only place left to scrub is the thin ruler.
+    let onScrub: (CGFloat) -> Void
 
     @State private var lastTranslation: CGFloat = 0
+    @State private var moved = false
 
     var body: some View {
         Color.clear
             .frame(height: height)
             .contentShape(Rectangle())
             .gesture(
-                DragGesture(minimumDistance: 2)
+                DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        let delta = value.translation.width - lastTranslation
-                        lastTranslation = value.translation.width
-                        onDrag(delta)
+                        if abs(value.translation.width) > 3 { moved = true }
+                        guard moved else { return }
+                        if isDraggable {
+                            let delta = value.translation.width - lastTranslation
+                            lastTranslation = value.translation.width
+                            onDrag(delta)
+                        } else {
+                            // The embedded lane cannot be moved, so a drag on
+                            // it scrubs like the ruler does.
+                            onScrub(value.location.x)
+                        }
                     }
-                    .onEnded { _ in lastTranslation = 0 },
-                including: isDraggable ? .gesture : .subviews
+                    .onEnded { value in
+                        if !moved { onScrub(value.location.x) }
+                        lastTranslation = 0
+                        moved = false
+                    }
             )
     }
 }

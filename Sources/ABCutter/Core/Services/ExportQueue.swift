@@ -194,8 +194,16 @@ final class ExportQueue: ObservableObject {
         let wantsEnd = hold.tail > 0
         guard wantsTitle || wantsEnd else { return (nil, nil) }
 
-        // The headline belongs to the film, and in a batch run nobody has
-        // typed one in for this clip.
+        // Each clip may carry its own card texts — a different selection
+        // often needs a different title. Empty fields fall back to the Cover
+        // tab, and the headline finally to the film's name.
+        func chosen(_ own: String, over shared: String) -> String {
+            let trimmed = own.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? shared : trimmed
+        }
+        settings.headline = chosen(clip.look.cardHeadline, over: settings.headline)
+        settings.subline = chosen(clip.look.cardSubline, over: settings.subline)
+        settings.endNote = chosen(clip.look.cardNote, over: settings.endNote)
         if settings.headline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             settings.headline = project.name
         }
