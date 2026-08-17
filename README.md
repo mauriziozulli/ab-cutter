@@ -20,13 +20,15 @@ lined up against the picture automatically — the offset is simply
 film and can be nudged frame by frame, typed in as a number, or dragged
 directly on its lane against the peak envelope.
 
-**Mark the switch visually.** On an audio A/B both halves show the identical
-picture, so the treatment has to carry the change on its own. A scale change
-does that better than a colour change: the before half sits inset in a
-bordered frame over a blurred backdrop and snaps out to full bleed at the
-switch, which reads instantly on a phone and mirrors what the sound is doing.
-Black and white remains available, along with muted colour and a plain full
-bleed.
+**Mark the switch without moving the picture.** Both halves of an audio A/B
+show the identical frame, so anything that moves is something the eye has to
+account for while the ear is meant to be working. The picture therefore holds
+still — inset in a bordered frame over a blurred backdrop, the same size
+throughout — and the switch is carried by the type: the label goes from plain
+bone to the bar, and the strip names the layer being heard. The before half
+keeps a slight mute as the one hint in the picture itself, and that can go
+too. If you want the movement, one click has the frame snap out to full bleed
+at the switch instead.
 
 **Everything comes out in the Sound Matters style.** The look is not this
 app's own: ink as the ground, bone as the type, and one of the five family

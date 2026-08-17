@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.10.1 — the picture holds still
+
+- The frame no longer snaps to full bleed at the switch. "Durchgehend
+  gerahmt" is the default, so the picture stays exactly where it is and the
+  A/B is carried by the type: the label goes from plain bone to the bar, and
+  the strip names the layer being heard.
+- The reasoning is the other way round from 0.4.0, and it is the better way
+  round for this app. A scale change does carry more motion than a colour
+  change — but both halves of an audio A/B show the identical picture, so
+  every bit of movement is something the eye has to account for while the ear
+  is meant to be doing the work. The snap is still one click away.
+- The muted before-half stays, as the one remaining hint in the picture.
+  Setting it to colour as well leaves nothing in the picture moving at all.
+- Each framing choice says under the picker what it does to the picture,
+  which is the thing being decided.
+
 ## 0.10.0 — the playouts run in the Sound Matters style
 
 The look no longer belongs to this app. Colours, faces and the arrangement of

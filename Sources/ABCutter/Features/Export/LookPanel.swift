@@ -92,6 +92,10 @@ struct LookPanel: View {
             }
             .controlSize(.small)
 
+            Text(state.project.export.frameTreatment.note)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
             if state.project.export.frameTreatment != .fullBleed {
                 labelledSlider(
                     "Grösse",
@@ -109,10 +113,6 @@ struct LookPanel: View {
 
                 Toggle("Feine Rahmenlinie", isOn: state.exportBinding(\.showFrameBorder))
                     .toggleStyle(.checkbox)
-
-                Text("Dass das Bild beim Wechsel auf Vollformat aufspringt, trägt das A/B allein — eine Grössenänderung liest sich auf dem Handy schneller als eine Farbänderung.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
             }
 
             Picker("Einpassen", selection: state.exportBinding(\.fitMode)) {

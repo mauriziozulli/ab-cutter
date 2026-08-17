@@ -302,25 +302,38 @@ enum FitMode: String, Codable, CaseIterable, Identifiable, Sendable {
 
 /// How the picture is framed on each side of the A/B switch.
 ///
-/// A scale change reads far faster than a colour change on a phone, and on an
-/// audio A/B — where both halves show the identical picture — it is the only
-/// treatment that carries real motion. The picture snapping out to full bleed
-/// at the switch mirrors what the sound does.
+/// A scale change carries more motion than a colour change, which is why the
+/// picture used to snap out to full bleed at the switch. On an audio A/B that
+/// turned out to be the wrong trade: both halves show the identical picture, so
+/// every bit of movement is something the eye has to account for, and the ear
+/// is what the clip is about. The frame stays put by default now, and the
+/// switch is carried by the type — the label goes from plain bone to the bar,
+/// and the strip names the layer being heard.
 enum FrameTreatment: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// Both halves inset — the picture never moves.
+    case insetBoth
     /// Before sits inset in a bordered frame, after fills the canvas.
     case insetBefore
-    /// Both halves inset — tidier, but the switch loses its snap.
-    case insetBoth
-    /// Full bleed throughout; the grade alone marks the switch.
+    /// Full bleed throughout.
     case fullBleed
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .insetBefore: "Rahmen → Vollformat"
         case .insetBoth: "Durchgehend gerahmt"
+        case .insetBefore: "Rahmen → Vollformat"
         case .fullBleed: "Immer Vollformat"
+        }
+    }
+
+    /// Shown under the picker, because the choice is about how much the eye is
+    /// asked to do while the ear is working.
+    var note: String {
+        switch self {
+        case .insetBoth: "Das Bild bleibt stehen — der Wechsel läuft über den Text."
+        case .insetBefore: "Das Bild springt beim Wechsel auf Vollformat."
+        case .fullBleed: "Kein Rahmen; der Wechsel läuft über Text und Gradation."
         }
     }
 
@@ -501,11 +514,13 @@ struct ExportSettings: Codable, Hashable {
     var outputFolderPath: String?
     var codec: VideoCodecChoice = .h264
     var fitMode: FitMode = .fill
-    /// Muted rather than monochrome by default: the frame carries the switch,
-    /// so the before half keeps its colour instead of going flat.
+    /// Muted rather than monochrome, and only slightly: with the frame holding
+    /// still this is the one remaining change in the picture, and it is meant
+    /// to be a hint rather than an event. Set it to colour as well and nothing
+    /// in the picture moves at all — the type carries the switch on its own.
     var beforeLook: LookStyle = .desaturated
     var afterLook: LookStyle = .color
-    var frameTreatment: FrameTreatment = .insetBefore
+    var frameTreatment: FrameTreatment = .insetBoth
     var frameBackdrop: FrameBackdrop = .blur
     /// How much of the canvas an inset picture covers, 0.6 … 0.98.
     var insetScale: Double = 0.86
