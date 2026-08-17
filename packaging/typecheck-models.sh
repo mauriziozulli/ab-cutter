@@ -85,8 +85,8 @@ func run() throws {
     check(old.project.clips.count == 1, "The legacy clip was lost.")
     check(old.project.clips[0].look.insetScale == 0.9,
           "The global look was not moved onto the clip.")
-    check(old.project.clips[0].look.accent == .verdigris,
-          "The global accent was not moved onto the clip.")
+    check(old.project.clips[0].look.afterColor == RGBColor.verdigris,
+          "The legacy accent did not become the B colour.")
     check(old.project.clips[0].look.beforeLabel == "VORHER",
           "A stored label was lost in the migration.")
     check(old.project.clips[0].kind == .ab, "A legacy clip did not default to A/B.")
@@ -104,18 +104,20 @@ func run() throws {
     var project = ABProject()
     var loop = Clip(name: "Loop 1", start: 5, end: 15, kind: .loop)
     loop.loopPasses = 2
-    loop.look.accent = .rost
-    loop.look.frameTreatment = .fullBleed
+    loop.look.afterColor = RGBColor(red: 0.1, green: 0.2, blue: 0.9)
+    loop.look.beforeColor = .white
     var ab = Clip(name: "Clip 1", start: 20, end: 40)
-    ab.look.accent = .ocker
+    ab.look.afterColor = .ocker
     project.clips = [loop, ab]
     project.export.chromeSafeTop = 0.17
     let encoded = try JSONEncoder().encode(Document(version: 1, project: project))
     let restored = try JSONDecoder().decode(Document.self, from: encoded).project
     check(restored.clips[0].kind == .loop, "A round trip lost the clip kind.")
     check(restored.clips[0].loopPasses == 2, "A round trip lost the loop passes.")
-    check(restored.clips[0].look.accent == .rost, "A round trip lost a clip look.")
-    check(restored.clips[1].look.accent == .ocker, "The clips' looks bled into each other.")
+    check(restored.clips[0].look.afterColor == RGBColor(red: 0.1, green: 0.2, blue: 0.9),
+          "A round trip lost a free colour.")
+    check(restored.clips[1].look.afterColor == RGBColor.ocker,
+          "The clips' looks bled into each other.")
     check(restored.export.chromeSafeTop == 0.17, "A round trip changed a delivery setting.")
 
     // Loop semantics: no switches inside the selection — the boundary lies

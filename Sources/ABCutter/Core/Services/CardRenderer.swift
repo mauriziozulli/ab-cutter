@@ -28,10 +28,7 @@ enum CardRenderer {
         headline: String,
         subline: String,
         accent: Brand.Colour,
-        house: Bool,
-        tint: LabelTint,
         position: StillTextPosition,
-        shadow: Bool,
         safeArea: SafeArea = .none
     ) -> CGImage? {
         let title = headline.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -41,17 +38,14 @@ enum CardRenderer {
         return draw(targetSize: targetSize) { size in
             let content = FrameRenderer.contentRect(targetSize: size, safeArea: safeArea)
             let side = (size.width * FrameRenderer.sideMarginFraction).rounded()
-            let colour = house
-                ? Brand.knochen.nsColor
-                : NSColor(srgbRed: tint.red, green: tint.green, blue: tint.blue, alpha: 1)
+            let colour = Brand.knochen.nsColor
 
             // The foot is placed first: it decides how much room the headline
             // has, rather than the other way round.
             let footTop = drawFoot(
                 size: size, content: content, side: side,
                 primary: caption, secondary: "",
-                accent: house ? accent : Brand.Colour(red: tint.red, green: tint.green, blue: tint.blue),
-                house: house, shadow: shadow
+                accent: accent
             )
 
             guard !title.isEmpty else { return }
@@ -65,13 +59,12 @@ enum CardRenderer {
                 title.uppercased(),
                 nominal: nominal,
                 available: size.width - side * 2,
-                room: ceiling - floor,
-                house: house
+                room: ceiling - floor
             )
             guard !fitted.lines.isEmpty else { return }
 
-            let font = leadFace(fitted.size, house: house)
-            let kern = leadKern(fitted.size, house: house)
+            let font = Typography.fett(fitted.size)
+            let kern = leadKern(fitted.size)
             let caps = Typography.capBox(font)
             let lineGap = (fitted.size * 0.12).rounded()
             let blockHeight = CGFloat(fitted.lines.count) * caps.capHeight
@@ -88,7 +81,7 @@ enum CardRenderer {
             // Drawn top line first, walking down.
             var baselineTop = blockTop
             for line in fitted.lines {
-                let attributed = capsLine(line, font: font, kern: kern, colour: colour, shadow: shadow)
+                let attributed = capsLine(line, font: font, kern: kern, colour: colour)
                 let width = Typography.advance(of: attributed, kern: kern)
                 attributed.draw(at: NSPoint(
                     x: ((size.width - width) / 2).rounded(),
@@ -126,7 +119,7 @@ enum CardRenderer {
             let footTop = drawFoot(
                 size: size, content: content, side: side,
                 primary: line, secondary: footnote,
-                accent: accent, house: true, shadow: false
+                accent: accent
             )
 
             guard !top.isEmpty || !bar.isEmpty else { return }
@@ -141,18 +134,18 @@ enum CardRenderer {
                 available: size.width - side * 2
             )
 
-            let font = leadFace(wordSize, house: true)
-            let kern = leadKern(wordSize, house: true)
+            let font = Typography.fett(wordSize)
+            let kern = leadKern(wordSize)
             let caps = Typography.capBox(font)
             let padX = (wordSize * 0.16).rounded()
             let padY = (wordSize * 0.13).rounded()
 
             let topLine = top.isEmpty
                 ? nil
-                : capsLine(top, font: font, kern: kern, colour: Brand.knochen.nsColor, shadow: false)
+                : capsLine(top, font: font, kern: kern, colour: Brand.knochen.nsColor)
             let barLine = bar.isEmpty
                 ? nil
-                : capsLine(bar, font: font, kern: kern, colour: accent.onAccent.nsColor, shadow: false)
+                : capsLine(bar, font: font, kern: kern, colour: accent.onAccent.nsColor)
 
             let lineGap = (wordSize * 0.12).rounded()
             let barHeight = barLine == nil ? 0 : caps.height(padTop: padY, padBottom: padY)
@@ -223,7 +216,7 @@ enum CardRenderer {
     private static func drawFoot(
         size: CGSize, content: CGRect, side: CGFloat,
         primary: String, secondary: String,
-        accent: Brand.Colour, house: Bool, shadow: Bool
+        accent: Brand.Colour
     ) -> CGFloat? {
         guard !primary.isEmpty || !secondary.isEmpty else { return nil }
 
@@ -232,9 +225,7 @@ enum CardRenderer {
         let ruleWidth = max(2, (size.height * Brand.ruleFraction).rounded())
         let gap = (primarySize * 0.9).rounded()
 
-        let primaryFont = house
-            ? Typography.mono(primarySize)
-            : NSFont.systemFont(ofSize: primarySize, weight: .semibold)
+        let primaryFont = Typography.mono(primarySize)
         let primaryKern = Typography.kern(0.18, at: primarySize)
         let primaryLine = primary.isEmpty ? nil : NSAttributedString(
             string: primary.uppercased(),
@@ -250,9 +241,7 @@ enum CardRenderer {
         let secondaryLine = secondary.isEmpty ? nil : NSAttributedString(
             string: secondary,
             attributes: [
-                .font: house
-                    ? Typography.serif(secondarySize * 1.18)
-                    : NSFont.systemFont(ofSize: secondarySize, weight: .regular),
+                .font: Typography.serif(secondarySize * 1.18),
                 .foregroundColor: Brand.knochen.withAlpha(0.7).nsColor,
                 .kern: secondaryKern
             ]
@@ -288,30 +277,18 @@ enum CardRenderer {
 
     // MARK: - Fitting
 
-    private static func leadFace(_ size: CGFloat, house: Bool) -> NSFont {
-        house ? Typography.fett(size) : NSFont.systemFont(ofSize: size, weight: .bold)
-    }
-
-    private static func leadKern(_ size: CGFloat, house: Bool) -> CGFloat {
-        Typography.kern(house ? -0.045 : 0.01, at: size)
+    private static func leadKern(_ size: CGFloat) -> CGFloat {
+        Typography.kern(-0.045, at: size)
     }
 
     private static func capsLine(
-        _ text: String, font: NSFont, kern: CGFloat, colour: NSColor, shadow: Bool
+        _ text: String, font: NSFont, kern: CGFloat, colour: NSColor
     ) -> NSAttributedString {
-        var attributes: [NSAttributedString.Key: Any] = [
+        NSAttributedString(string: text, attributes: [
             .font: font,
             .foregroundColor: colour,
             .kern: kern
-        ]
-        if shadow {
-            let drop = NSShadow()
-            drop.shadowColor = Brand.tinte.withAlpha(0.8).nsColor
-            drop.shadowBlurRadius = font.pointSize * 0.24
-            drop.shadowOffset = NSSize(width: 0, height: -font.pointSize * 0.02)
-            attributes[.shadow] = drop
-        }
-        return NSAttributedString(string: text, attributes: attributes)
+        ])
     }
 
     /// Largest size at which every one of these single lines fits the width.
@@ -322,10 +299,10 @@ enum CardRenderer {
     ) -> CGFloat {
         var size = nominal
         for (text, slack) in lines where !text.isEmpty {
-            let font = leadFace(nominal, house: true)
-            let kern = leadKern(nominal, house: true)
+            let font = Typography.fett(nominal)
+            let kern = leadKern(nominal)
             let measured = Typography.advance(
-                of: capsLine(text, font: font, kern: kern, colour: .black, shadow: false),
+                of: capsLine(text, font: font, kern: kern, colour: .black),
                 kern: kern
             ) + nominal * slack
             guard measured > available, measured > 0 else { continue }
@@ -337,12 +314,12 @@ enum CardRenderer {
     /// Wraps a headline and shrinks it until it fits both the width and the
     /// room left between the foot and the top of the safe area.
     private static func fit(
-        _ text: String, nominal: CGFloat, available: CGFloat, room: CGFloat, house: Bool
+        _ text: String, nominal: CGFloat, available: CGFloat, room: CGFloat
     ) -> (size: CGFloat, lines: [String]) {
         var size = max(nominal, 14)
         while size > 14 {
-            let font = leadFace(size, house: house)
-            let kern = leadKern(size, house: house)
+            let font = Typography.fett(size)
+            let kern = leadKern(size)
             let lines = wrap(text, font: font, kern: kern, available: available)
             let caps = Typography.capBox(font)
             let height = CGFloat(lines.count) * caps.capHeight
@@ -352,8 +329,8 @@ enum CardRenderer {
             }
             size = (size * 0.94).rounded(.down)
         }
-        let font = leadFace(size, house: house)
-        return (size, wrap(text, font: font, kern: leadKern(size, house: house), available: available))
+        let font = Typography.fett(size)
+        return (size, wrap(text, font: font, kern: leadKern(size), available: available))
     }
 
     private static func fits(
@@ -361,7 +338,7 @@ enum CardRenderer {
     ) -> Bool {
         lines.allSatisfy {
             Typography.advance(
-                of: capsLine($0, font: font, kern: kern, colour: .black, shadow: false),
+                of: capsLine($0, font: font, kern: kern, colour: .black),
                 kern: kern
             ) <= available
         }
@@ -381,7 +358,7 @@ enum CardRenderer {
         for word in words {
             let candidate = current.isEmpty ? word : current + " " + word
             let width = Typography.advance(
-                of: capsLine(candidate, font: font, kern: kern, colour: .black, shadow: false),
+                of: capsLine(candidate, font: font, kern: kern, colour: .black),
                 kern: kern
             )
             if width <= available || current.isEmpty {

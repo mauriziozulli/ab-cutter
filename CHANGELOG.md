@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.13.0 — the design is fixed, the colours are yours, and the sound syncs itself
+
+Simplification, on request. The design vocabulary that had grown — grades,
+label styles, frame treatments, backdrops — is gone. What every clip now is:
+the picture in colour, framed with a thin border over the blurred backdrop,
+one small type style, the two mono strips. What remains free per clip: the
+A colour and the B colour.
+
+- **Two colours, freely chosen.** Each side has one colour, carried by the
+  frame border *and* the type together, so the switch reads as one event —
+  white before, blue after, whatever the film wants. Six brand swatches plus
+  a full colour picker per side. A project saved earlier keeps its accent:
+  it becomes the B colour on opening.
+- **Removed:** the before/after grades (the video is always colour), the
+  Balken/Knochen/getönt/Pill label styles (one small style now), the frame
+  treatment and backdrop pickers (always framed over blur, thin border), the
+  label position and shadow modes (bottom; shadow always on over picture).
+- The two still cards keep the brand look; their family colour moved to the
+  Cover tab, since it no longer belongs to any clip.
+
+**Wellenform-Sync.** Frame-accurate sync without a two-pop: the reference is
+already in the film. The video's embedded track and a mix contain the same
+dialogue, so cross-correlating their loudness envelopes finds the offset the
+two-pop would have marked — coarse over everything, then fine around the
+winner, landing within ±5 ms (a quarter frame at 50 fps). One button per
+source, one for all (⇧⌘Y), works for early *and* late mixes, and reports its
+confidence instead of silently placing a doubtful match: below 25 %
+agreement it refuses and says so. The maths is exercised against synthetic
+shifted signals — including an unrelated-audio case that must score below
+the refusal threshold.
+
 ## 0.12.1 — the export no longer crashes without a title-card hold
 
 - **Fixed:** exporting crashed with "The timeRange of a volume ramp must have

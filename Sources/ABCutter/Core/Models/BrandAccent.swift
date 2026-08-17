@@ -28,6 +28,18 @@ enum BrandAccent: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// The value itself, usable in the model layer. `Brand.Colour` wraps it
+    /// for drawing.
+    var rgbColor: RGBColor {
+        switch self {
+        case .verdigris: return .verdigris
+        case .ocker: return .ocker
+        case .knochen: return .knochen
+        case .rost: return .rost
+        case .staubblau: return .staubblau
+        }
+    }
+
     /// What the colour is for, in the words of the website's `FARBEN.md`.
     var note: String {
         switch self {

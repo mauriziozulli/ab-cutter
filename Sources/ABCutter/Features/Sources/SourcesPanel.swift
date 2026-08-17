@@ -115,6 +115,8 @@ struct SourcesPanel: View {
                 Button("Ton hinzufügen …") { state.presentAudioPicker() }
                     .controlSize(.small)
                 Button("Auto-Sync") { state.autoSyncAll() }
+                Button("Wellenform") { state.alignAllByWaveform() }
+                    .help("Alle Mixe am Originalton des Videos ausrichten — der Zwei-Pop steckt schon im Film")
                     .controlSize(.small)
                     .disabled(state.project.videoTimecodeStartSeconds == nil)
                     .help("Jede gestempelte Datei per eingebettetem Timecode aufs Bild legen")
@@ -221,7 +223,11 @@ struct AudioSourceRow: View {
                 Text(Timecode.clockString(fromSeconds: source.durationSeconds))
                 Text("·")
                 Text(source.syncMode.title)
-                    .foregroundStyle(source.syncMode == .timecode ? Color.green : .secondary)
+                    .foregroundStyle(
+                        source.syncMode == .timecode || source.syncMode == .waveform
+                            ? Color.green
+                            : .secondary
+                    )
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
@@ -252,6 +258,13 @@ struct AudioSourceRow: View {
 
     private var offsetControls: some View {
         HStack(spacing: 4) {
+            Button {
+                state.alignByWaveform(source)
+            } label: {
+                Image(systemName: "waveform.badge.magnifyingglass")
+            }
+            .help("Per Wellenform am Originalton ausrichten")
+
             Button("−10f") { state.nudgeOffset(-10 * state.project.frameDuration, for: source) }
             Button("−1f") { state.nudgeOffset(-state.project.frameDuration, for: source) }
 

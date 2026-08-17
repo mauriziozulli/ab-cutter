@@ -63,6 +63,11 @@ enum Brand {
             self.alpha = alpha
         }
 
+        /// A stored project colour, ready to draw.
+        init(_ colour: RGBColor) {
+            self.init(red: colour.red, green: colour.green, blue: colour.blue)
+        }
+
         func withAlpha(_ value: Double) -> Colour {
             Colour(red: red, green: green, blue: blue, alpha: value)
         }

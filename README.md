@@ -14,44 +14,42 @@ audio layers as you like: the original production sound, your final mix,
 stems such as SFX-only or music-only. Every layer sits on its own lane, and
 every clip picks its own pair of them to compare.
 
-**Every clip is its own playout.** Colour, framing, grade, texts and texture
-are set per clip — a click on a clip opens its settings — so one project can
-plan a framed ochre A/B, a full-bleed verdigris loop and a third thing
-entirely, side by side. Two kinds of clip: an **A/B** flips between the two
-sources at each switch point while the picture runs on; a **Loop** plays the
-selection once with the A source, then the identical selection again with the
-B source — the ear hears the same moment twice, which is the honest
-comparison. The kinds carry their own colours on the timeline, and the
-player's clip preview (⇧⌘P) plays a clip exactly as it will be exported,
-loop passes included.
+**One fixed design, two free colours.** Every playout is the same object:
+the picture in colour, framed with a thin border over a blurred copy of
+itself, a small type line per side, two mono strips. What each clip chooses
+is its **A colour and B colour** — border and type carry them together, so
+the switch reads as one event. White before, blue after, or any pair the
+film wants; six brand swatches and a free picker per side.
 
-**Sync by timecode, or by hand.** WAV files stamped with a Broadcast Wave
-`bext` time reference and QuickTime files with a `tmcd` timecode track are
-lined up against the picture automatically — the offset is simply
-`audio start − picture start`. Anything unstamped starts at the head of the
-film and can be nudged frame by frame, typed in as a number, or dragged
-directly on its lane against the peak envelope.
+**Two kinds of clip.** An **A/B** flips between the two sources at each
+switch point while the picture runs on; a **Loop** plays the selection once
+with the A source, then the identical selection again with the B source —
+the ear hears the same moment twice, which is the honest comparison. The
+kinds carry their own colours on the timeline, and the player's clip preview
+(⇧⌘P) plays a clip exactly as it will be exported, loop passes included.
+
+**Sync by timecode, by waveform, or by hand.** WAV files stamped with a
+Broadcast Wave `bext` time reference and QuickTime files with a `tmcd`
+timecode track are lined up against the picture automatically. Everything
+else can be synced **by the sound itself**: the film's embedded track and a
+mix contain the same dialogue, so cross-correlating the two finds the offset
+a two-pop would have marked — within ±5 ms, and with a confidence readout
+that refuses a doubtful match rather than placing it. Manual nudging, typed
+offsets and lane-dragging remain.
 
 **Mark the switch without moving the picture.** Both halves of an audio A/B
 show the identical frame, so anything that moves is something the eye has to
-account for while the ear is meant to be working. The picture therefore holds
-still — inset in a bordered frame over a blurred backdrop, the same size
-throughout — and the switch is carried by the type: the label goes from plain
-bone to the bar, and the strip names the layer being heard. The before half
-keeps a slight mute as the one hint in the picture itself, and that can go
-too. If you want the movement, one click has the frame snap out to full bleed
-at the switch instead.
+account for while the ear is meant to be working. The picture holds still,
+always in colour, and the switch is carried entirely by the colours: border
+and label change together, and the strip names the layer being heard.
 
-**Everything comes out in the Sound Matters style.** The look is not this
-app's own: ink as the ground, bone as the type, and one of the five family
-colours per project, taken straight from the website's `FARBEN.md`. Archivo
-Black, Bodoni Moda and Space Mono are bundled — the same files the site serves
-— so a playout and a page are set in the same faces. The before/after label is
-the sticker's arrangement: the first half in plain bone, the second in a field
-of the accent with ink type and a hard contour, the way `matters.` sits in the
-wordmark. A mono strip runs over a hard rule at each end, carrying the film,
-the layer you are hearing, and the address. Grain and a veil sit over the
-picture the way they do over every section of the site.
+**Everything comes out in the Sound Matters faces.** Archivo Black, Bodoni
+Moda and Space Mono are bundled — the same files the website serves — so a
+playout and a page are set in the same type. A mono strip runs over a hard
+rule at each end, carrying the film, the layer you are hearing, and the
+address. Grain and a veil sit over the picture the way they do over every
+section of the site, and the two still cards keep the full brand arrangement,
+wordmark bar included.
 
 **Stay clear of the story chrome.** A 9:16 clip plays full screen with the
 account name over the top of it and the reply field over the bottom, so a
@@ -65,8 +63,8 @@ rules mark the strips; they never reach a file.
 
 **Monitor the A/B.** The preview can solo any single layer, or follow the
 split exactly as the export will: before-source until the switch, after-source
-after it. It can also render the real 4:5 or 9:16 crop, the frame and the
-grade while you scrub, so everything is decided before anything is encoded.
+after it. It can also render the real 4:5 or 9:16 crop and the frame while
+you scrub, so everything is decided before anything is encoded.
 
 **Cut to a house length.** Set the length once — 10, 15, 20, 30, 60 seconds
 or anything you type — and every new clip is that long. With the length locked,

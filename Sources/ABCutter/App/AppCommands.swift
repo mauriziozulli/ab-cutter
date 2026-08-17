@@ -19,6 +19,9 @@ struct AppCommands: Commands {
                 .keyboardShortcut("o", modifiers: .command)
             Button("Ton hinzufügen …") { state.presentAudioPicker() }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
+            Button("Alle per Wellenform syncen") { state.alignAllByWaveform() }
+                .keyboardShortcut("y", modifiers: [.command, .shift])
+                .disabled(!state.project.hasVideo)
                 .disabled(!state.project.hasVideo)
 
             Divider()

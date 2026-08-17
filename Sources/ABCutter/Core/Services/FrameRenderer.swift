@@ -12,15 +12,13 @@ struct RenderPlan {
     var fitMode: FitMode
     var panX: Double
     var panY: Double
-    /// Measured from the start of the clip. The picture alternates between the
-    /// before and after treatment at each of these.
+    /// Measured from the start of the clip. The overlay alternates between
+    /// the before and after side at each of these.
     var switchTimes: [CMTime]
-    var beforeLook: LookStyle
-    var afterLook: LookStyle
-    var frameTreatment: FrameTreatment
-    var frameBackdrop: FrameBackdrop
+    /// False only for the plain preview with no clip selected — the design
+    /// itself is fixed: framed picture over a blurred backdrop.
+    var inset: Bool = true
     var insetScale: Double
-    var labelPosition: LabelPosition
     /// Strips the composition keeps clear of the platform's own controls.
     var safeArea: SafeArea = .none
     /// Whether the layout reserves the two mono strips.
@@ -57,7 +55,6 @@ enum FrameRenderer {
         }
 
         let isBefore = Self.isBeforeSegment(at: time, switches: plan.switchTimes)
-        let look = isBefore ? plan.beforeLook : plan.afterLook
         let overlay = isBefore ? plan.beforeOverlay : plan.afterOverlay
 
         let oriented = orient(source, naturalSize: plan.sourceNaturalSize, transform: plan.sourcePreferredTransform)
@@ -67,29 +64,25 @@ enum FrameRenderer {
 
         let frame = layout(
             targetSize: plan.targetSize,
-            treatment: plan.frameTreatment,
-            isBefore: isBefore,
+            inset: plan.inset,
             insetScale: plan.insetScale,
-            labelPosition: plan.labelPosition,
             safeArea: plan.safeArea,
             showStrips: plan.showStrips
         ).picture
 
-        let picture = applyLook(
-            look,
-            to: place(oriented, into: frame, mode: plan.fitMode, panX: plan.panX, panY: plan.panY)
-        )
+        // The picture always keeps its colour: the A/B is an audio switch,
+        // and the sides are told apart by the frame and type colours.
+        let picture = place(oriented, into: frame, mode: plan.fitMode, panX: plan.panX, panY: plan.panY)
 
         // A full-bleed frame needs no backdrop; an inset one sits on a blurred
-        // or solid card so the canvas is never empty.
+        // copy of itself so the canvas is never empty.
         let base: CIImage
         if frame == target {
             base = CIImage(color: Brand.tinte.ciColor).cropped(to: target)
         } else {
             base = backdrop(
                 from: place(oriented, into: target, mode: .fill, panX: plan.panX, panY: plan.panY),
-                target: target,
-                style: plan.frameBackdrop
+                target: target
             )
         }
 
@@ -162,10 +155,8 @@ enum FrameRenderer {
 
     static func layout(
         targetSize: CGSize,
-        treatment: FrameTreatment,
-        isBefore: Bool,
+        inset: Bool = true,
         insetScale: Double,
-        labelPosition: LabelPosition,
         safeArea: SafeArea = .none,
         showStrips: Bool = false
     ) -> PlayoutLayout {
@@ -195,10 +186,8 @@ enum FrameRenderer {
 
         let picture = pictureRect(
             targetSize: targetSize,
-            treatment: treatment,
-            isBefore: isBefore,
+            inset: inset,
             insetScale: insetScale,
-            labelPosition: labelPosition,
             within: inner
         )
 
@@ -211,7 +200,6 @@ enum FrameRenderer {
             labelBand: labelBand(
                 targetSize: targetSize,
                 pictureRect: picture,
-                position: labelPosition,
                 within: inner
             ),
             sideMargin: side
@@ -245,14 +233,12 @@ enum FrameRenderer {
     /// strips have taken their share.
     private static func pictureRect(
         targetSize: CGSize,
-        treatment: FrameTreatment,
-        isBefore: Bool,
+        inset: Bool,
         insetScale: Double,
-        labelPosition: LabelPosition,
         within region: CGRect
     ) -> CGRect {
         let full = CGRect(origin: .zero, size: targetSize)
-        guard treatment.isInset(before: isBefore) else { return full }
+        guard inset else { return full }
 
         // Scaled against the region's height rather than the canvas height, so
         // what is reserved comes out of the picture instead of being covered by
@@ -262,8 +248,9 @@ enum FrameRenderer {
         let height = (region.height * scale).rounded()
         let freeX = targetSize.width - width
         let freeY = region.height - height
-        // Roughly three-quarters of the slack goes to the label side.
-        let bottom = region.minY + (labelPosition == .bottom ? freeY * 0.72 : freeY * 0.28).rounded()
+        // Roughly three-quarters of the slack goes to the label side, which
+        // is always the bottom.
+        let bottom = region.minY + (freeY * 0.72).rounded()
 
         return CGRect(x: (freeX / 2).rounded(), y: bottom, width: width, height: height)
     }
@@ -273,29 +260,21 @@ enum FrameRenderer {
     private static func labelBand(
         targetSize: CGSize,
         pictureRect: CGRect,
-        position: LabelPosition,
         within region: CGRect
     ) -> CGRect {
         let isInset = pictureRect != CGRect(origin: .zero, size: targetSize)
         if isInset {
-            return position == .bottom
-                ? CGRect(
-                    x: 0,
-                    y: region.minY,
-                    width: targetSize.width,
-                    height: max(pictureRect.minY - region.minY, 0)
-                )
-                : CGRect(
-                    x: 0,
-                    y: pictureRect.maxY,
-                    width: targetSize.width,
-                    height: max(region.maxY - pictureRect.maxY, 0)
-                )
+            return CGRect(
+                x: 0,
+                y: region.minY,
+                width: targetSize.width,
+                height: max(pictureRect.minY - region.minY, 0)
+            )
         }
         let height = min((targetSize.height * 0.16).rounded(), region.height)
         return CGRect(
             x: 0,
-            y: position == .bottom ? region.minY : region.maxY - height,
+            y: region.minY,
             width: targetSize.width,
             height: height
         )
@@ -346,33 +325,29 @@ enum FrameRenderer {
 
     // MARK: - Backdrop
 
-    private static func backdrop(from fill: CIImage, target: CGRect, style: FrameBackdrop) -> CIImage {
+    /// The blurred, darkened copy of the frame behind the inset picture.
+    private static func backdrop(from fill: CIImage, target: CGRect) -> CIImage {
         let black = CIImage(color: .black).cropped(to: target)
-        switch style {
-        case .solid:
-            return CIImage(color: CIColor(red: 0.05, green: 0.05, blue: 0.06)).cropped(to: target)
-        case .blur:
-            // Downsample, blur small, scale back. Visually identical to a
-            // large-radius blur once darkened, at a fraction of the cost.
-            let ratio: CGFloat = 0.12
-            var small = fill
-                .transformed(by: CGAffineTransform(scaleX: ratio, y: ratio))
-                .clampedToExtent()
-            if let blur = CIFilter(name: "CIGaussianBlur") {
-                blur.setValue(small, forKey: kCIInputImageKey)
-                blur.setValue(6.0, forKey: kCIInputRadiusKey)
-                small = blur.outputImage ?? small
-            }
-            var wide = small.transformed(by: CGAffineTransform(scaleX: 1 / ratio, y: 1 / ratio))
-            // Darkened and drained so the inset picture stays dominant.
-            if let controls = CIFilter(name: "CIColorControls") {
-                controls.setValue(wide, forKey: kCIInputImageKey)
-                controls.setValue(-0.34, forKey: kCIInputBrightnessKey)
-                controls.setValue(0.65, forKey: kCIInputSaturationKey)
-                wide = controls.outputImage ?? wide
-            }
-            return wide.cropped(to: target).composited(over: black)
+        // Downsample, blur small, scale back. Visually identical to a
+        // large-radius blur once darkened, at a fraction of the cost.
+        let ratio: CGFloat = 0.12
+        var small = fill
+            .transformed(by: CGAffineTransform(scaleX: ratio, y: ratio))
+            .clampedToExtent()
+        if let blur = CIFilter(name: "CIGaussianBlur") {
+            blur.setValue(small, forKey: kCIInputImageKey)
+            blur.setValue(6.0, forKey: kCIInputRadiusKey)
+            small = blur.outputImage ?? small
         }
+        var wide = small.transformed(by: CGAffineTransform(scaleX: 1 / ratio, y: 1 / ratio))
+        // Darkened and drained so the inset picture stays dominant.
+        if let controls = CIFilter(name: "CIColorControls") {
+            controls.setValue(wide, forKey: kCIInputImageKey)
+            controls.setValue(-0.34, forKey: kCIInputBrightnessKey)
+            controls.setValue(0.65, forKey: kCIInputSaturationKey)
+            wide = controls.outputImage ?? wide
+        }
+        return wide.cropped(to: target).composited(over: black)
     }
 
     // MARK: - Texture
@@ -422,30 +397,6 @@ enum FrameRenderer {
         blend.setValue(texture.cropped(to: target), forKey: kCIInputImageKey)
         blend.setValue(image, forKey: kCIInputBackgroundImageKey)
         return (blend.outputImage ?? image).cropped(to: target)
-    }
-
-    // MARK: - Grade
-
-    private static func applyLook(_ look: LookStyle, to image: CIImage) -> CIImage {
-        switch look {
-        case .color:
-            return image
-        case .blackAndWhite:
-            guard let filter = CIFilter(name: "CIPhotoEffectMono") else {
-                return desaturate(image, saturation: 0)
-            }
-            filter.setValue(image, forKey: kCIInputImageKey)
-            return filter.outputImage?.cropped(to: image.extent) ?? image
-        case .desaturated:
-            return desaturate(image, saturation: 0.35)
-        }
-    }
-
-    private static func desaturate(_ image: CIImage, saturation: Double) -> CIImage {
-        guard let filter = CIFilter(name: "CIColorControls") else { return image }
-        filter.setValue(image, forKey: kCIInputImageKey)
-        filter.setValue(saturation, forKey: kCIInputSaturationKey)
-        return filter.outputImage?.cropped(to: image.extent) ?? image
     }
 
     // MARK: - Orientation

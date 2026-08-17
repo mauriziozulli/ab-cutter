@@ -209,13 +209,13 @@ final class ExportQueue: ObservableObject {
         let safeArea = project.export.safeArea(for: format)
         let title = wantsTitle ? frame.flatMap {
             StillExporter.titleCard(
-                frame: $0, format: format, settings: settings, look: clip.look,
+                frame: $0, format: format, settings: settings, fitMode: clip.look.fitMode,
                 panX: clip.panX, panY: clip.panY, safeArea: safeArea
             )
         } : nil
         let end = wantsEnd
             ? StillExporter.endCard(
-                frame: frame, format: format, settings: settings, look: clip.look,
+                frame: frame, format: format, settings: settings, fitMode: clip.look.fitMode,
                 panX: clip.panX, panY: clip.panY, safeArea: safeArea
             )
             : nil

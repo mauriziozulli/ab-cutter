@@ -1,157 +1,103 @@
+import AppKit
 import SwiftUI
 
-/// Everything about how the *selected clip* looks: colour, framing, grade,
-/// type and texture. Embedded under the clip inspector, because since 0.12
-/// the look belongs to the clip — one project can plan an ochre framed A/B
-/// and a verdigris full-bleed loop side by side.
+/// The selected clip's look. The design itself is fixed — framed picture over
+/// a blurred backdrop, colour video, one small type style — so what remains
+/// here is what actually varies from clip to clip: the two side colours, the
+/// texts, and a few quiet dials.
 @MainActor
 struct ClipLookPanel: View {
     @ObservedObject var state: AppState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            houseSection
-            frameSection
-            gradeSection
-            labelSection
+            colourSection
+            textSection
+            stripsSection
+            fineSection
         }
     }
 
-    // MARK: - House style
+    // MARK: - The two colours
 
-    private var houseSection: some View {
+    private var colourSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("Farbe", selection: state.lookBinding(\.accent)) {
-                ForEach(BrandAccent.allCases) { accent in
-                    Text(accent.title).tag(accent)
-                }
-            }
-            .controlSize(.small)
-            .help((state.selectedClip?.look.accent ?? .ocker).note)
+            colourRow(label: "A (vorher)", keyPath: \.beforeColor)
+            colourRow(label: "B (nachher)", keyPath: \.afterColor)
 
-            Toggle("Zeilen oben und unten", isOn: state.lookBinding(\.showStrips))
-                .toggleStyle(.checkbox)
-                .help("Mono-Zeile mit harter Linie an beiden Enden — der Rahmen des Aufklebers, aufgeklappt")
-
-            if state.selectedClip?.look.showStrips == true {
-                TextField("Oben links — leer nimmt den Filmnamen", text: state.lookBinding(\.stripLeft))
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
-                TextField("Unten links", text: state.lookBinding(\.stripNote))
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
-                TextField("Unten rechts — Adresse", text: state.lookBinding(\.stripAddress))
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
-
-                Text("Oben rechts steht die Tonspur, die gerade läuft — sie wechselt mit dem A/B.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            labelledSlider(
-                "Korn",
-                value: state.lookBinding(\.grainStrength),
-                range: 0...0.6,
-                readout: "\(Int((state.selectedClip?.look.grainStrength ?? 0) * 100)) %"
-            )
-            labelledSlider(
-                "Schleier",
-                value: state.lookBinding(\.vignetteStrength),
-                range: 0...0.9,
-                readout: "\(Int((state.selectedClip?.look.vignetteStrength ?? 0) * 100)) %"
-            )
-
-            if !Typography.housefacesAvailable {
-                Label(
-                    "Die Hausschriften liessen sich nicht laden — gesetzt wird in Arial Black, Didot und Courier.",
-                    systemImage: "exclamationmark.triangle"
-                )
+            Text("Rahmen und Schrift einer Seite tragen dieselbe Farbe — der Wechsel liest sich dann als ein Ereignis. Weiss für A und Blau für B ist z. B. ein Klick auf das Feld.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            }
         }
         .abCard()
-        .abSection("Haus-Stil")
+        .abSection("Farben")
     }
 
-    // MARK: - Frame
+    private func colourRow(
+        label: String,
+        keyPath: WritableKeyPath<ClipLook, RGBColor>
+    ) -> some View {
+        HStack(spacing: 5) {
+            Text(label)
+                .font(.caption)
+                .frame(width: 68, alignment: .leading)
 
-    private var frameSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker("Rahmen", selection: state.lookBinding(\.frameTreatment)) {
-                ForEach(FrameTreatment.allCases) { treatment in
-                    Text(treatment.title).tag(treatment)
+            ForEach(RGBColor.swatches, id: \.name) { swatch in
+                Button {
+                    state.lookBinding(keyPath).wrappedValue = swatch.colour
+                } label: {
+                    Circle()
+                        .fill(Color(red: swatch.colour.red, green: swatch.colour.green, blue: swatch.colour.blue))
+                        .frame(width: 15, height: 15)
+                        .overlay(
+                            Circle().strokeBorder(
+                                isCurrent(swatch.colour, keyPath: keyPath) ? Color.primary : Theme.hairline,
+                                lineWidth: isCurrent(swatch.colour, keyPath: keyPath) ? 2 : 1
+                            )
+                        )
                 }
+                .buttonStyle(.plain)
+                .help(swatch.name)
             }
-            .controlSize(.small)
 
-            Text((state.selectedClip?.look.frameTreatment ?? .insetBoth).note)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-
-            if state.selectedClip?.look.frameTreatment != .fullBleed {
-                labelledSlider(
-                    "Grösse",
-                    value: state.lookBinding(\.insetScale),
-                    range: 0.6...0.98,
-                    readout: "\(Int((state.selectedClip?.look.insetScale ?? 0.86) * 100)) %"
-                )
-
-                Picker("Umgebung", selection: state.lookBinding(\.frameBackdrop)) {
-                    ForEach(FrameBackdrop.allCases) { backdrop in
-                        Text(backdrop.title).tag(backdrop)
-                    }
-                }
+            ColorPicker("", selection: colourBinding(keyPath), supportsOpacity: false)
+                .labelsHidden()
                 .controlSize(.small)
+                .help("Eigene Farbe")
 
-                Toggle("Feine Rahmenlinie", isOn: state.lookBinding(\.showFrameBorder))
-                    .toggleStyle(.checkbox)
-            }
-
-            Picker("Einpassen", selection: state.lookBinding(\.fitMode)) {
-                ForEach(FitMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
-                }
-            }
-            .controlSize(.small)
+            Spacer()
         }
-        .abCard()
-        .abSection("Rahmen")
     }
 
-    // MARK: - Grade
-
-    private var gradeSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker("A (vorher)", selection: state.lookBinding(\.beforeLook)) {
-                ForEach(LookStyle.allCases) { look in
-                    Text(look.title).tag(look)
-                }
-            }
-            .controlSize(.small)
-
-            Picker("B (nachher)", selection: state.lookBinding(\.afterLook)) {
-                ForEach(LookStyle.allCases) { look in
-                    Text(look.title).tag(look)
-                }
-            }
-            .controlSize(.small)
-
-            labelledSlider(
-                "Überblende",
-                value: state.lookBinding(\.audioCrossfadeMilliseconds),
-                range: 0...500,
-                readout: "\(Int(state.selectedClip?.look.audioCrossfadeMilliseconds ?? 40)) ms"
-            )
-        }
-        .abCard()
-        .abSection("Gradation & Tonwechsel")
+    private func isCurrent(_ colour: RGBColor, keyPath: WritableKeyPath<ClipLook, RGBColor>) -> Bool {
+        guard let current = state.selectedClip?.look[keyPath: keyPath] else { return false }
+        return abs(current.red - colour.red) < 0.004
+            && abs(current.green - colour.green) < 0.004
+            && abs(current.blue - colour.blue) < 0.004
     }
 
-    // MARK: - Labels
+    /// SwiftUI colour in, plain RGB out. The picker hands back whatever space
+    /// the user chose in, so the components are read through sRGB.
+    private func colourBinding(_ keyPath: WritableKeyPath<ClipLook, RGBColor>) -> Binding<Color> {
+        Binding(
+            get: {
+                let colour = state.selectedClip?.look[keyPath: keyPath] ?? .white
+                return Color(red: colour.red, green: colour.green, blue: colour.blue)
+            },
+            set: { newValue in
+                guard let srgb = NSColor(newValue).usingColorSpace(.sRGB) else { return }
+                state.lookBinding(keyPath).wrappedValue = RGBColor(
+                    red: Double(srgb.redComponent),
+                    green: Double(srgb.greenComponent),
+                    blue: Double(srgb.blueComponent)
+                )
+            }
+        )
+    }
 
-    private var labelSection: some View {
+    // MARK: - Text
+
+    private var textSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Text einbrennen", isOn: state.lookBinding(\.showLabels))
                 .toggleStyle(.checkbox)
@@ -169,33 +115,88 @@ struct ClipLookPanel: View {
                 TextField("Zweite Zeile — Titel, Regie, Credits", text: state.lookBinding(\.subtitleText))
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
-
-                Picker("Stil", selection: state.lookBinding(\.labelStyle)) {
-                    ForEach(LabelStyle.allCases) { style in
-                        Text(style.title).tag(style)
-                    }
-                }
-                .controlSize(.small)
-
-                Picker("Position", selection: state.lookBinding(\.labelPosition)) {
-                    ForEach(LabelPosition.allCases) { position in
-                        Text(position.title).tag(position)
-                    }
-                }
-                .controlSize(.small)
-
-                Picker("Schatten", selection: state.lookBinding(\.labelShadow)) {
-                    ForEach(LabelShadowMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .controlSize(.small)
-                .help("Automatisch setzt einen weichen Schatten überall dort, wo Schrift direkt auf dem Bild landet")
             }
         }
         .abCard()
         .abSection("Text")
+    }
+
+    // MARK: - Strips
+
+    private var stripsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Zeilen oben und unten", isOn: state.lookBinding(\.showStrips))
+                .toggleStyle(.checkbox)
+                .help("Mono-Zeile mit harter Linie an beiden Enden")
+
+            if state.selectedClip?.look.showStrips == true {
+                TextField("Oben links — leer nimmt den Filmnamen", text: state.lookBinding(\.stripLeft))
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                TextField("Unten links", text: state.lookBinding(\.stripNote))
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                TextField("Unten rechts — Adresse", text: state.lookBinding(\.stripAddress))
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+
+                Text("Oben rechts steht die Tonspur, die gerade läuft — sie wechselt mit dem A/B.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .abCard()
+        .abSection("Zeilen")
+    }
+
+    // MARK: - The quiet dials
+
+    private var fineSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            labelledSlider(
+                "Grösse",
+                value: state.lookBinding(\.insetScale),
+                range: 0.6...0.98,
+                readout: "\(Int((state.selectedClip?.look.insetScale ?? 0.86) * 100)) %"
+            )
+
+            Picker("Einpassen", selection: state.lookBinding(\.fitMode)) {
+                ForEach(FitMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .controlSize(.small)
+
+            labelledSlider(
+                "Korn",
+                value: state.lookBinding(\.grainStrength),
+                range: 0...0.6,
+                readout: "\(Int((state.selectedClip?.look.grainStrength ?? 0) * 100)) %"
+            )
+            labelledSlider(
+                "Schleier",
+                value: state.lookBinding(\.vignetteStrength),
+                range: 0...0.9,
+                readout: "\(Int((state.selectedClip?.look.vignetteStrength ?? 0) * 100)) %"
+            )
+            labelledSlider(
+                "Überblende",
+                value: state.lookBinding(\.audioCrossfadeMilliseconds),
+                range: 0...500,
+                readout: "\(Int(state.selectedClip?.look.audioCrossfadeMilliseconds ?? 40)) ms"
+            )
+
+            if !Typography.housefacesAvailable {
+                Label(
+                    "Die Hausschriften liessen sich nicht laden — gesetzt wird in Arial Black, Didot und Courier.",
+                    systemImage: "exclamationmark.triangle"
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .abCard()
+        .abSection("Rahmen & Textur")
     }
 
     // MARK: - Helpers
@@ -209,7 +210,7 @@ struct ClipLookPanel: View {
         HStack(spacing: 6) {
             Text(label)
                 .font(.caption)
-                .frame(width: 62, alignment: .leading)
+                .frame(width: 68, alignment: .leading)
             Slider(value: value, in: range)
                 .controlSize(.mini)
             Text(readout)

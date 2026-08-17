@@ -8,16 +8,12 @@ import Foundation
 struct OverlayRequest {
     var targetSize: CGSize
     var layout: FrameRenderer.PlayoutLayout
-    var accent: Brand.Colour
-    var style: LabelStyle
-    /// Only consulted by the two styles that read their colour off the picture.
-    var tint: LabelTint = .white
+    /// This side's colour — the border and the type carry it together, which
+    /// is what makes the switch legible: white to blue is one event, not two.
+    var colour: Brand.Colour
     var isBefore: Bool
-    var showBorder: Bool
     var title: String = ""
     var subtitle: String = ""
-    var position: LabelPosition = .bottom
-    var shadow: Bool = false
     /// The mono strips. Empty corners are simply left clear.
     var stripTopLeft: String = ""
     var stripTopRight: String = ""
@@ -28,13 +24,11 @@ struct OverlayRequest {
 }
 
 /// Draws the full-canvas furniture for one half of a clip: the two mono
-/// strips with their rules, the frame border, the before/after label, and the
-/// quieter second line under it.
+/// strips with their rules, the frame border in the side's colour, the small
+/// before/after label in the same colour, and the quieter second line.
 ///
-/// The arrangement is the website's, section for section: a rule and a line of
-/// mono at each end — "the frame of the sticker, unfolded", as `global.css`
-/// puts it — with the heavy grotesque between them, and the accent carried in
-/// a hard-edged bar rather than in a tint sampled from the picture.
+/// The design is fixed; only the two side colours are free. Border and type
+/// share the colour on purpose — the switch then reads as one event.
 ///
 /// One transparent image per half is cheaper to reason about than a stack of
 /// Core Image steps, and AppKit lays out type far better than CIFilters do.
@@ -48,7 +42,7 @@ enum OverlayRenderer {
 
         let heading = request.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let caption = request.subtitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        let drawsBorder = request.showBorder && request.layout.isInset
+        let drawsBorder = request.layout.isInset
         let drawsStrips = request.layout.hasStrips && request.hasStripText
         let drawsGuides = request.guides && !request.safeArea.clamped.isEmpty
         guard drawsBorder || drawsStrips || drawsGuides || !heading.isEmpty || !caption.isEmpty else {
@@ -84,32 +78,13 @@ enum OverlayRenderer {
 
     // MARK: - Border
 
-    /// A hairline around the inset picture, in the accent. On the website the
-    /// same contour is what makes the bar read as a printed field rather than
-    /// as a highlight.
+    /// A thin line around the inset picture, in this side's colour.
     private static func drawBorder(_ request: OverlayRequest) {
         let lineWidth = max(2, (request.targetSize.height * 0.0022).rounded())
-        let colour = borderColour(request)
         let path = NSBezierPath(rect: request.layout.picture.insetBy(dx: -lineWidth / 2, dy: -lineWidth / 2))
         path.lineWidth = lineWidth
-        colour.setStroke()
+        request.colour.nsColor.withAlphaComponent(0.92).setStroke()
         path.stroke()
-    }
-
-    private static func borderColour(_ request: OverlayRequest) -> NSColor {
-        switch request.style {
-        case .balken, .knochen:
-            return request.accent.nsColor.withAlphaComponent(0.92)
-        case .pill:
-            return NSColor.white.withAlphaComponent(0.75)
-        case .tinted:
-            return NSColor(
-                srgbRed: request.tint.red,
-                green: request.tint.green,
-                blue: request.tint.blue,
-                alpha: 0.92
-            )
-        }
     }
 
     // MARK: - The two strips
@@ -133,7 +108,7 @@ enum OverlayRenderer {
             NSRect(x: strip.minX, y: ruleY, width: strip.width, height: ruleWidth).fill()
 
             let fontSize = max(11, (strip.height * 0.40).rounded())
-            let attributes = monoAttributes(size: fontSize, shadow: request.shadow)
+            let attributes = monoAttributes(size: fontSize)
             // Centred in the space the rule leaves, so the two strips are
             // mirror images of each other rather than merely both present.
             let free = strip.height - ruleWidth
@@ -155,18 +130,17 @@ enum OverlayRenderer {
         }
     }
 
-    private static func monoAttributes(size: CGFloat, shadow: Bool) -> [NSAttributedString.Key: Any] {
-        var attributes: [NSAttributedString.Key: Any] = [
-            .font: Typography.mono(size),
-            .foregroundColor: Brand.leise.nsColor,
-            .kern: Typography.kern(Typography.monoTracking, at: size)
-        ]
+    private static func monoAttributes(size: CGFloat) -> [NSAttributedString.Key: Any] {
         // Blurred nearly a full em, rather than the website's half. Its own
         // strips sit hard against the canvas edge, deep in the veil; these sit
         // a tenth of the way in, where a bright wall can still swallow bone at
         // two thirds.
-        if shadow { attributes[.shadow] = softShadow(radius: size * 0.9) }
-        return attributes
+        [
+            .font: Typography.mono(size),
+            .foregroundColor: Brand.leise.nsColor,
+            .kern: Typography.kern(Typography.monoTracking, at: size),
+            .shadow: softShadow(radius: size * 0.9)
+        ]
     }
 
     // MARK: - The label
@@ -176,48 +150,46 @@ enum OverlayRenderer {
 
         let size = request.targetSize
         let band = request.layout.labelBand
-        // Sized against the band as well as the canvas, so the strips taking
-        // their share never pushes the word out of the space left for it.
-        //
-        // The second line is measured into the ceiling rather than added on
-        // top of it: the caption and its gap come to roughly four fifths of
-        // the heading again, so a ceiling set for the heading alone leaves a
-        // two-line block taller than the band it has to sit in — which is how
-        // the quiet line ended up resting on the rule below it.
+
+        // Small type, by request — the label is a caption on the cut, not a
+        // poster line. Still sized against the band as well as the canvas, so
+        // the strips taking their share never pushes it out of its space.
         let ratio: CGFloat = caption.isEmpty ? 0.52 : 0.34
         let ceiling = band.height > 0 ? band.height * ratio : size.height
-        let titleSize = max(20, min((size.height * 0.038).rounded(), ceiling.rounded()))
-        let captionSize = max(12, (titleSize * 0.46).rounded())
-        let gap = (titleSize * 0.34).rounded()
+        let titleSize = max(15, min((size.height * 0.024).rounded(), ceiling.rounded()))
+        let captionSize = max(11, (titleSize * 0.6).rounded())
+        let gap = (titleSize * 0.4).rounded()
 
-        let house = request.style.isHouse
         let titleFont = Typography.fett(titleSize)
-        let titleKern = Typography.kern(house ? Typography.fettTracking : 0.06, at: titleSize)
-        let titleLine = heading.isEmpty ? nil : headingLine(request, text: heading, size: titleSize)
-        let captionLine = caption.isEmpty
-            ? nil
-            : NSAttributedString(string: caption, attributes: captionAttributes(request, size: captionSize))
+        let titleKern = Typography.kern(0.06, at: titleSize)
+        let titleLine = heading.isEmpty ? nil : NSAttributedString(
+            string: heading.uppercased(),
+            attributes: [
+                .font: titleFont,
+                .foregroundColor: request.colour.nsColor,
+                .kern: titleKern,
+                .shadow: softShadow(radius: titleSize * 0.5)
+            ]
+        )
+        let captionKern = Typography.kern(Typography.serifTracking, at: captionSize)
+        let captionLine = caption.isEmpty ? nil : NSAttributedString(
+            string: caption,
+            attributes: [
+                .font: Typography.serif(captionSize * 1.18),
+                .foregroundColor: request.colour.nsColor.withAlphaComponent(0.82),
+                .kern: captionKern,
+                .shadow: softShadow(radius: captionSize * 0.8)
+            ]
+        )
 
-        // The bar is built on the capitals, not on the line box: set in
-        // capitals the type never uses the descender room, so a field sized on
-        // the line height leaves the letters visibly high in it.
         let caps = Typography.capBox(titleFont)
-        let bars = house && request.wantsBar
-        let barPadX = bars ? (titleSize * 0.16).rounded() : 0
-        let barPadTop = bars ? (titleSize * 0.13).rounded() : 0
-        let barPadBottom = bars ? (titleSize * 0.13).rounded() : 0
-
         let titleWidth = titleLine.map { Typography.advance(of: $0, kern: titleKern) } ?? 0
         let captionMeasure = captionLine?.size() ?? .zero
-        // Without a bar the block is still measured on the capitals, so the
-        // gap to the second line does not change with the font's descender.
-        let titleHeight = titleLine == nil
-            ? 0
-            : caps.height(padTop: barPadTop, padBottom: barPadBottom)
+        let titleHeight = titleLine == nil ? 0 : caps.capHeight
         let blockHeight = titleHeight
             + (titleLine != nil && captionLine != nil ? gap : 0)
             + captionMeasure.height
-        let blockWidth = max(titleWidth + barPadX * 2, captionMeasure.width)
+        let blockWidth = max(titleWidth, captionMeasure.width)
         guard blockHeight > 0, blockWidth > 0 else { return }
 
         let content = FrameRenderer.contentRect(targetSize: size, safeArea: request.safeArea)
@@ -234,131 +206,21 @@ enum OverlayRenderer {
             ? min(max(blockBottom, lowest), highest)
             : content.midY - blockHeight / 2
 
-        if request.style == .pill {
-            drawPill(size: size, blockBottom: blockBottom, blockWidth: blockWidth,
-                     blockHeight: blockHeight, titleSize: titleSize)
-        }
-
         // The caption sits below the heading, so it is drawn first.
         var cursor = blockBottom
         if let captionLine {
+            let width = Typography.advance(of: captionLine, kern: captionKern)
             captionLine.draw(
-                at: NSPoint(x: ((size.width - captionMeasure.width) / 2).rounded(), y: cursor.rounded())
+                at: NSPoint(x: ((size.width - width) / 2).rounded(), y: cursor.rounded())
             )
             cursor += captionMeasure.height + gap
         }
         if let titleLine {
-            let x = ((size.width - titleWidth) / 2).rounded()
-            if bars {
-                drawBar(
-                    request,
-                    around: NSRect(
-                        x: x - barPadX,
-                        y: cursor.rounded(),
-                        width: (titleWidth + barPadX * 2).rounded(),
-                        height: titleHeight.rounded()
-                    ),
-                    lineWidth: max(2, (titleSize * 0.07).rounded())
-                )
-            }
             titleLine.draw(at: NSPoint(
-                x: x,
-                y: caps.origin(fieldBottom: cursor, padBottom: barPadBottom).rounded()
+                x: ((size.width - titleWidth) / 2).rounded(),
+                y: caps.origin(fieldBottom: cursor, padBottom: 0).rounded()
             ))
         }
-    }
-
-    /// The bar: a field in the accent with a hard contour in ink, exactly the
-    /// `.balken` rule from `global.css`. The contour is what makes it read as
-    /// printed rather than as a highlighter.
-    private static func drawBar(_ request: OverlayRequest, around rect: NSRect, lineWidth: CGFloat) {
-        let radius = (rect.height * 0.1).rounded()
-        let field = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
-        request.accent.nsColor.setFill()
-        field.fill()
-
-        let contour = NSBezierPath(
-            roundedRect: rect.insetBy(dx: lineWidth / 2, dy: lineWidth / 2),
-            xRadius: radius, yRadius: radius
-        )
-        contour.lineWidth = lineWidth
-        Brand.tinte.nsColor.setStroke()
-        contour.stroke()
-    }
-
-    private static func drawPill(
-        size: CGSize, blockBottom: CGFloat, blockWidth: CGFloat,
-        blockHeight: CGFloat, titleSize: CGFloat
-    ) {
-        let padX = (titleSize * 0.9).rounded()
-        let padY = (titleSize * 0.45).rounded()
-        let plate = NSRect(
-            x: ((size.width - blockWidth) / 2 - padX).rounded(),
-            y: (blockBottom - padY).rounded(),
-            width: (blockWidth + padX * 2).rounded(),
-            height: (blockHeight + padY * 2).rounded()
-        )
-        let radius = min(plate.height / 2, 26)
-        NSColor(calibratedWhite: 0, alpha: 0.55).setFill()
-        NSBezierPath(roundedRect: plate, xRadius: radius, yRadius: radius).fill()
-    }
-
-    private static func headingLine(
-        _ request: OverlayRequest, text: String, size: CGFloat
-    ) -> NSAttributedString {
-        var attributes: [NSAttributedString.Key: Any] = [
-            .font: Typography.fett(size),
-            .foregroundColor: headingColour(request),
-            .kern: Typography.kern(
-                request.style.isHouse ? Typography.fettTracking : 0.06,
-                at: size
-            )
-        ]
-        // A bar carries its own contrast; a shadow on it only muddies the edge.
-        if request.shadow && !request.wantsBar {
-            attributes[.shadow] = softShadow(radius: size * 0.3)
-        }
-        return NSAttributedString(string: text.uppercased(), attributes: attributes)
-    }
-
-    private static func headingColour(_ request: OverlayRequest) -> NSColor {
-        switch request.style {
-        case .balken:
-            // In the bar the type is ink; the half without the bar is bone —
-            // the wordmark's own arrangement, and the A/B reads as a snap.
-            return request.wantsBar ? request.accent.onAccent.nsColor : Brand.knochen.nsColor
-        case .knochen:
-            return request.isBefore ? Brand.knochen.nsColor : request.accent.nsColor
-        case .pill:
-            return .white
-        case .tinted:
-            return NSColor(
-                srgbRed: request.tint.red, green: request.tint.green,
-                blue: request.tint.blue, alpha: 1
-            )
-        }
-    }
-
-    /// The counter-voice, for the quieter line under the label. Deliberately
-    /// mixed case: in capitals a didone's hairlines break away.
-    private static func captionAttributes(
-        _ request: OverlayRequest, size: CGFloat
-    ) -> [NSAttributedString.Key: Any] {
-        let colour: NSColor = request.style.isHouse
-            ? Brand.knochen.withAlpha(0.82).nsColor
-            : NSColor(
-                srgbRed: request.tint.red, green: request.tint.green,
-                blue: request.tint.blue, alpha: 0.82
-            )
-        var attributes: [NSAttributedString.Key: Any] = [
-            .font: request.style.isHouse
-                ? Typography.serif(size * 1.18)
-                : NSFont.systemFont(ofSize: size, weight: .medium),
-            .foregroundColor: colour,
-            .kern: Typography.kern(request.style.isHouse ? Typography.serifTracking : 0.04, at: size)
-        ]
-        if request.shadow { attributes[.shadow] = softShadow(radius: size * 0.8) }
-        return attributes
     }
 
     /// The website's `text-shadow: 0 2px 18px rgba(16, 16, 20, .8)`, restated:
@@ -395,10 +257,6 @@ enum OverlayRenderer {
 }
 
 extension OverlayRequest {
-    /// The bar belongs to the second half, the way `matters.` is the line that
-    /// sits in it on the sticker.
-    var wantsBar: Bool { style == .balken && !isBefore }
-
     var hasStripText: Bool {
         !stripTopLeft.isEmpty || !stripTopRight.isEmpty
             || !stripBottomLeft.isEmpty || !stripBottomRight.isEmpty

@@ -53,7 +53,7 @@ enum StillExporter {
         frame: CGImage,
         format: SocialFormat,
         settings: StillSettings,
-        look: ClipLook,
+        fitMode: FitMode,
         panX: Double,
         panY: Double,
         safeArea: SafeArea = .none,
@@ -62,32 +62,20 @@ enum StillExporter {
         guard let canvas = canvasSize(format: format, scale: scale) else { return nil }
         let target = CGRect(origin: .zero, size: canvas)
         let context = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
-        let house = look.labelStyle.isHouse
 
         var background = place(
-            CIImage(cgImage: frame), into: target, mode: look.fitMode, panX: panX, panY: panY
+            CIImage(cgImage: frame), into: target, mode: fitMode, panX: panX, panY: panY
         )
         background = soften(background, target: target, strength: settings.blurStrength)
         background = dim(background, target: target, amount: settings.dimStrength)
-
-        // The tint is read from the finished backdrop, not the raw frame, so it
-        // contrasts with what the type will actually sit on. In the house style
-        // nothing is sampled — the palette decides.
-        let band = textBand(targetSize: canvas, position: settings.textPosition, safeArea: safeArea)
-        let tint = house
-            ? LabelTint.white
-            : PaletteSampler.tint(of: background, sceneRect: target, bandRect: band, context: context)
 
         var composed = background
         if let overlay = CardRenderer.titleCard(
             targetSize: canvas,
             headline: settings.headline,
             subline: settings.subline,
-            accent: look.accent.colour,
-            house: house,
-            tint: tint,
+            accent: settings.accent.colour,
             position: settings.textPosition,
-            shadow: house ? false : tint.needsShadow,
             safeArea: safeArea
         ) {
             composed = CIImage(cgImage: overlay).composited(over: composed)
@@ -103,7 +91,7 @@ enum StillExporter {
         frame: CGImage?,
         format: SocialFormat,
         settings: StillSettings,
-        look: ClipLook,
+        fitMode: FitMode,
         panX: Double,
         panY: Double,
         safeArea: SafeArea = .none,
@@ -116,7 +104,7 @@ enum StillExporter {
         var background = CIImage(color: Brand.tinte.ciColor).cropped(to: target)
         if settings.endGround == .frame, let frame {
             var picture = place(
-                CIImage(cgImage: frame), into: target, mode: look.fitMode, panX: panX, panY: panY
+                CIImage(cgImage: frame), into: target, mode: fitMode, panX: panX, panY: panY
             )
             picture = soften(picture, target: target, strength: max(settings.blurStrength, 55))
             // Darker than a title card: here the wordmark has to win outright.
@@ -130,7 +118,7 @@ enum StillExporter {
             wordmarkBar: settings.endWordmarkBar,
             address: settings.endAddress,
             note: settings.endNote,
-            accent: look.accent.colour,
+            accent: settings.accent.colour,
             safeArea: safeArea
         ) else { return nil }
 

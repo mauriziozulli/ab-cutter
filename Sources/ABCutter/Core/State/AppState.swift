@@ -685,6 +685,51 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Waveform sync
+
+    /// Syncs one mix against the film's own embedded track, by the sound
+    /// itself. This is what replaces the two-pop: the dialogue in the mix and
+    /// the dialogue in the video are the same events, and the correlation
+    /// finds the offset between them.
+    func alignByWaveform(_ source: AudioSource) {
+        guard let sourceURL = source.url else {
+            errorMessage = "Die Spur im Video ist die Referenz — sie braucht keinen Sync."
+            return
+        }
+        guard let videoURL = project.videoURL else { return }
+
+        status = "Vergleiche \(source.name) mit dem Originalton …"
+        Task { [weak self] in
+            do {
+                let result = try await AudioAligner.align(sourceURL: sourceURL, videoURL: videoURL)
+                guard let self else { return }
+                guard var updated = self.project.audioSources.first(where: { $0.id == source.id }) else { return }
+                updated.offsetSeconds = result.offsetSeconds
+                updated.syncMode = .waveform
+                self.updateSource(updated)
+                self.status = String(
+                    format: "%@ per Wellenform gelegt: %+.3f s · Übereinstimmung %.0f %%",
+                    source.name, result.offsetSeconds, result.confidence * 100
+                )
+            } catch {
+                self?.errorMessage = error.localizedDescription
+                self?.status = "Wellenform-Sync für \(source.name) fehlgeschlagen."
+            }
+        }
+    }
+
+    /// Every external, enabled source in one go.
+    func alignAllByWaveform() {
+        let candidates = project.audioSources.filter { !$0.isEmbedded && $0.isEnabled }
+        guard !candidates.isEmpty else {
+            errorMessage = "Keine externe Tonspur zum Syncen."
+            return
+        }
+        for source in candidates {
+            alignByWaveform(source)
+        }
+    }
+
     // MARK: - Waveforms
 
     func refreshWaveforms() {
@@ -800,7 +845,7 @@ final class AppState: ObservableObject {
                 frame: grabbedFrame,
                 format: format,
                 settings: project.stills,
-                look: activeLook,
+                fitMode: activeLook.fitMode,
                 panX: selectedClip?.panX ?? 0,
                 panY: selectedClip?.panY ?? 0,
                 safeArea: project.export.safeArea(for: format),
@@ -816,7 +861,7 @@ final class AppState: ObservableObject {
             frame: frame,
             format: format,
             settings: project.stills,
-            look: activeLook,
+            fitMode: activeLook.fitMode,
             panX: selectedClip?.panX ?? 0,
             panY: selectedClip?.panY ?? 0,
             safeArea: project.export.safeArea(for: format),
@@ -879,7 +924,7 @@ final class AppState: ObservableObject {
                        frame: frame,
                        format: format,
                        settings: settings,
-                       look: activeLook,
+                       fitMode: activeLook.fitMode,
                        panX: selectedClip?.panX ?? 0,
                        panY: selectedClip?.panY ?? 0,
                        safeArea: safeArea
@@ -893,7 +938,7 @@ final class AppState: ObservableObject {
                        frame: grabbedFrame,
                        format: format,
                        settings: settings,
-                       look: activeLook,
+                       fitMode: activeLook.fitMode,
                        panX: selectedClip?.panX ?? 0,
                        panY: selectedClip?.panY ?? 0,
                        safeArea: safeArea

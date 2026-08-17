@@ -11,12 +11,15 @@ enum SyncMode: String, Codable, Sendable {
     case fileStart
     /// The user moved it by hand.
     case manual
+    /// Found by cross-correlating against the video's own track.
+    case waveform
 
     var title: String {
         switch self {
         case .timecode: "Timecode"
         case .fileStart: "Dateianfang"
         case .manual: "Manuell"
+        case .waveform: "Wellenform"
         }
     }
 }
@@ -326,23 +329,6 @@ struct Clip: Identifiable, Codable, Hashable {
 
 // MARK: - Look and framing
 
-/// Grade applied to one half of the A/B split.
-enum LookStyle: String, Codable, CaseIterable, Identifiable, Sendable {
-    case color
-    case blackAndWhite
-    case desaturated
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .color: "Farbe (Original)"
-        case .blackAndWhite: "Schwarzweiss"
-        case .desaturated: "Entsättigt"
-        }
-    }
-}
-
 /// How the source frame is fitted into the social aspect ratio.
 enum FitMode: String, Codable, CaseIterable, Identifiable, Sendable {
     /// Fill the frame and crop the overflow.
@@ -358,125 +344,6 @@ enum FitMode: String, Codable, CaseIterable, Identifiable, Sendable {
         case .fit: "Einpassen (Balken)"
         }
     }
-}
-
-/// How the picture is framed on each side of the A/B switch.
-///
-/// A scale change carries more motion than a colour change, which is why the
-/// picture used to snap out to full bleed at the switch. On an audio A/B that
-/// turned out to be the wrong trade: both halves show the identical picture, so
-/// every bit of movement is something the eye has to account for, and the ear
-/// is what the clip is about. The frame stays put by default now, and the
-/// switch is carried by the type — the label goes from plain bone to the bar,
-/// and the strip names the layer being heard.
-enum FrameTreatment: String, Codable, CaseIterable, Identifiable, Sendable {
-    /// Both halves inset — the picture never moves.
-    case insetBoth
-    /// Before sits inset in a bordered frame, after fills the canvas.
-    case insetBefore
-    /// Full bleed throughout.
-    case fullBleed
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .insetBoth: "Durchgehend gerahmt"
-        case .insetBefore: "Rahmen → Vollformat"
-        case .fullBleed: "Immer Vollformat"
-        }
-    }
-
-    /// Shown under the picker, because the choice is about how much the eye is
-    /// asked to do while the ear is working.
-    var note: String {
-        switch self {
-        case .insetBoth: "Das Bild bleibt stehen — der Wechsel läuft über den Text."
-        case .insetBefore: "Das Bild springt beim Wechsel auf Vollformat."
-        case .fullBleed: "Kein Rahmen; der Wechsel läuft über Text und Gradation."
-        }
-    }
-
-    func isInset(before: Bool) -> Bool {
-        switch self {
-        case .insetBefore: before
-        case .insetBoth: true
-        case .fullBleed: false
-        }
-    }
-}
-
-/// What fills the canvas around an inset picture.
-enum FrameBackdrop: String, Codable, CaseIterable, Identifiable, Sendable {
-    /// A blurred, darkened copy of the same frame.
-    case blur
-    /// A near-black card.
-    case solid
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .blur: "Unscharfes Bild"
-        case .solid: "Fast schwarz"
-        }
-    }
-}
-
-/// How the burnt-in before/after label is drawn.
-enum LabelStyle: String, Codable, CaseIterable, Identifiable, Sendable {
-    /// The sticker: the word in a field of the accent colour, set in ink,
-    /// with a hard contour. Same arrangement as the second line of the
-    /// wordmark, and the reason a playout is recognisable as the same brand.
-    case balken
-    /// The lead face in bone, no field. The quieter half of the house style.
-    case knochen
-    /// Bold plain type, tinted with the dominant hue of the cropped frame.
-    case tinted
-    /// White type on a translucent pill — safe on any footage.
-    case pill
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .balken: "Balken (Haus)"
-        case .knochen: "Knochen (Haus)"
-        case .tinted: "Farbe aus dem Bild"
-        case .pill: "Weiss auf Fläche"
-        }
-    }
-
-    /// True for the two that take their colour from the palette rather than
-    /// from the picture, so the sampler can be skipped entirely.
-    var isHouse: Bool { self == .balken || self == .knochen }
-}
-
-/// A drop shadow is the only thing that keeps plain type readable over
-/// mid-tone footage, so it can be left to the contrast measurement.
-enum LabelShadowMode: String, Codable, CaseIterable, Identifiable, Sendable {
-    /// Only when the measured contrast against the frame is too low.
-    case auto
-    case off
-    case always
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .auto: "Automatisch"
-        case .off: "Aus"
-        case .always: "Immer"
-        }
-    }
-}
-
-enum LabelPosition: String, Codable, CaseIterable, Identifiable, Sendable {
-    case top
-    case bottom
-
-    var id: String { rawValue }
-    var title: String { self == .top ? "Oben" : "Unten" }
 }
 
 /// Delivery aspect ratios. All portrait formats render at 1080 wide, which is
@@ -599,6 +466,35 @@ enum VideoCodecChoice: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// How the source frame is fitted — kept, because it is functional rather
+/// than stylistic: a 2.39:1 film in a 9:16 frame is a real decision.
+///
+/// (The rest of the old style vocabulary — grades, label styles, frame
+/// treatments — is gone. The design is fixed now: framed picture over a
+/// blurred backdrop, colour video, one small type style. What remains free
+/// is the colour of each side.)
+
+/// A plain RGB colour, storable in a project file.
+struct RGBColor: Codable, Hashable, Sendable {
+    var red: Double
+    var green: Double
+    var blue: Double
+
+    static let white = RGBColor(red: 1, green: 1, blue: 1)
+
+    /// The Sound Matters family, for the swatch row. Values from FARBEN.md.
+    static let knochen = RGBColor(red: 0xEF / 255, green: 0xE6 / 255, blue: 0xD2 / 255)
+    static let ocker = RGBColor(red: 0xD9 / 255, green: 0x96 / 255, blue: 0x2B / 255)
+    static let verdigris = RGBColor(red: 0x2F / 255, green: 0x8F / 255, blue: 0x7A / 255)
+    static let staubblau = RGBColor(red: 0x6E / 255, green: 0x93 / 255, blue: 0xA6 / 255)
+    static let rost = RGBColor(red: 0xB4 / 255, green: 0x56 / 255, blue: 0x2E / 255)
+
+    static let swatches: [(name: String, colour: RGBColor)] = [
+        ("Weiss", .white), ("Knochen", .knochen), ("Ocker", .ocker),
+        ("Verdigris", .verdigris), ("Staubblau", .staubblau), ("Rost", .rost)
+    ]
+}
+
 // MARK: - Per-clip look
 
 /// Everything about how one clip looks and reads: framing, grade, colour,
@@ -613,27 +509,20 @@ enum VideoCodecChoice: String, Codable, CaseIterable, Identifiable, Sendable {
 /// the look was global: a project written back then decodes its `export`
 /// object *as* a `ClipLook`, and that is the whole migration.
 struct ClipLook: Codable, Hashable {
-    /// Which of the Sound Matters family carries this clip.
-    var accent: BrandAccent = .ocker
+    /// Border and type of the A side. White by default — neutral, reads on
+    /// almost anything.
+    var beforeColor: RGBColor = .white
+    /// Border and type of the B side. Ochre by default, the film section's
+    /// colour on the website.
+    var afterColor: RGBColor = .ocker
     var fitMode: FitMode = .fill
-    /// Muted rather than monochrome, and only slightly: with the frame holding
-    /// still this is the one remaining change in the picture, and it is meant
-    /// to be a hint rather than an event.
-    var beforeLook: LookStyle = .desaturated
-    var afterLook: LookStyle = .color
-    var frameTreatment: FrameTreatment = .insetBoth
-    var frameBackdrop: FrameBackdrop = .blur
-    /// How much of the canvas an inset picture covers, 0.6 … 0.98.
+    /// How much of the canvas the framed picture covers, 0.6 … 0.98.
     var insetScale: Double = 0.86
-    var showFrameBorder: Bool = true
     var showLabels: Bool = true
     var beforeLabel: String = "VORHER"
     var afterLabel: String = "NACHHER"
     /// A quieter second line under the label — film title, direction, credits.
     var subtitleText: String = ""
-    var labelPosition: LabelPosition = .bottom
-    var labelStyle: LabelStyle = .balken
-    var labelShadow: LabelShadowMode = .auto
     /// The two mono strips with their hard rules, top and bottom.
     var showStrips: Bool = true
     /// Top left. Empty falls back to the film's name.
@@ -642,36 +531,42 @@ struct ClipLook: Codable, Hashable {
     var stripNote: String = ""
     /// Bottom right. The address under the wordmark on the sticker.
     var stripAddress: String = "soundmatters.audio"
-    /// Grain over the picture, `opacity: .26` on the site. Zero is off.
+    /// Grain over the picture. Zero is off.
     var grainStrength: Double = 0.26
-    /// The site's veil, dialled back for a canvas that carries type in the
-    /// corners. Zero is off.
+    /// Radial darkening towards the corners. Zero is off.
     var vignetteStrength: Double = 0.55
     /// Length of the audio crossfade at each seam, in milliseconds.
     var audioCrossfadeMilliseconds: Double = 40
 
+    private enum CodingKeys: String, CodingKey {
+        case beforeColor, afterColor, fitMode, insetScale
+        case showLabels, beforeLabel, afterLabel, subtitleText
+        case showStrips, stripLeft, stripNote, stripAddress
+        case grainStrength, vignetteStrength, audioCrossfadeMilliseconds
+    }
+
+    /// A look written while the accent was one of five named colours. Its own
+    /// key set, so the synthesised encoder is not asked to write it back.
+    private enum LegacyCodingKeys: String, CodingKey {
+        case accent
+    }
+
     init() {}
 
     /// Decoded key by key so a clip written by an earlier version still
-    /// opens — the same reasoning as everywhere else in this file.
+    /// opens. A legacy accent becomes the B colour, which is the role it
+    /// actually played.
     init(from decoder: Decoder) throws {
         self = ClipLook()
         guard let box = try? decoder.container(keyedBy: CodingKeys.self) else { return }
-        if let value = try? box.decode(BrandAccent.self, forKey: .accent) { accent = value }
+        if let value = try? box.decode(RGBColor.self, forKey: .beforeColor) { beforeColor = value }
+        if let value = try? box.decode(RGBColor.self, forKey: .afterColor) { afterColor = value }
         if let value = try? box.decode(FitMode.self, forKey: .fitMode) { fitMode = value }
-        if let value = try? box.decode(LookStyle.self, forKey: .beforeLook) { beforeLook = value }
-        if let value = try? box.decode(LookStyle.self, forKey: .afterLook) { afterLook = value }
-        if let value = try? box.decode(FrameTreatment.self, forKey: .frameTreatment) { frameTreatment = value }
-        if let value = try? box.decode(FrameBackdrop.self, forKey: .frameBackdrop) { frameBackdrop = value }
         if let value = try? box.decode(Double.self, forKey: .insetScale) { insetScale = value }
-        if let value = try? box.decode(Bool.self, forKey: .showFrameBorder) { showFrameBorder = value }
         if let value = try? box.decode(Bool.self, forKey: .showLabels) { showLabels = value }
         if let value = try? box.decode(String.self, forKey: .beforeLabel) { beforeLabel = value }
         if let value = try? box.decode(String.self, forKey: .afterLabel) { afterLabel = value }
         if let value = try? box.decode(String.self, forKey: .subtitleText) { subtitleText = value }
-        if let value = try? box.decode(LabelPosition.self, forKey: .labelPosition) { labelPosition = value }
-        if let value = try? box.decode(LabelStyle.self, forKey: .labelStyle) { labelStyle = value }
-        if let value = try? box.decode(LabelShadowMode.self, forKey: .labelShadow) { labelShadow = value }
         if let value = try? box.decode(Bool.self, forKey: .showStrips) { showStrips = value }
         if let value = try? box.decode(String.self, forKey: .stripLeft) { stripLeft = value }
         if let value = try? box.decode(String.self, forKey: .stripNote) { stripNote = value }
@@ -680,6 +575,12 @@ struct ClipLook: Codable, Hashable {
         if let value = try? box.decode(Double.self, forKey: .vignetteStrength) { vignetteStrength = value }
         if let value = try? box.decode(Double.self, forKey: .audioCrossfadeMilliseconds) {
             audioCrossfadeMilliseconds = value
+        }
+
+        if (try? box.decode(RGBColor.self, forKey: .afterColor)) == nil,
+           let legacy = try? decoder.container(keyedBy: LegacyCodingKeys.self),
+           let accent = try? legacy.decode(BrandAccent.self, forKey: .accent) {
+            afterColor = accent.rgbColor
         }
     }
 }
@@ -837,6 +738,9 @@ struct StillSettings: Codable, Hashable {
     /// One quieter line under the address — a credit, or what the reel showed.
     var endNote: String = ""
     var endGround: EndCardGround = .tinte
+    /// The family colour the two cards carry. Only the cards: the clips take
+    /// their colours from their own look.
+    var accent: BrandAccent = .ocker
 
     var hasText: Bool {
         !headline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -863,6 +767,7 @@ struct StillSettings: Codable, Hashable {
         if let value = try? box.decode(String.self, forKey: .endAddress) { endAddress = value }
         if let value = try? box.decode(String.self, forKey: .endNote) { endNote = value }
         if let value = try? box.decode(EndCardGround.self, forKey: .endGround) { endGround = value }
+        if let value = try? box.decode(BrandAccent.self, forKey: .accent) { accent = value }
     }
 }
 
