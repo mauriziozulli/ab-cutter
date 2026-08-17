@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.12.1 — the export no longer crashes without a title-card hold
+
+- **Fixed:** exporting crashed with "The timeRange of a volume ramp must have
+  a numeric start time and a numeric duration" for any file that carried no
+  title card at its head — every 4:5 and 1:1 file, and every file with the
+  cards set to off. Where the film starts in the composition was read off the
+  video track *before* anything had been inserted into it, and an empty
+  track's time range is invalid rather than zero. That invalid start poisoned
+  every switch time, and the first volume ramp built on one raised an
+  exception inside AVFoundation. The start is now stated by construction —
+  the length of the lead hold, or zero — instead of being read back.
+- The bug shipped in 0.11.0 with the card holds and hid behind them: a 9:16
+  export with the default settings fills the track with the hold first, so
+  the read-back happened to be valid there.
+- Both ramp builders now refuse non-numeric times outright and fall back to
+  flat gain, so bad input renders safely instead of raising.
+
 ## 0.12.0 — every clip is its own playout
 
 - **The look lives on the clip now.** Colour, framing, grade, texts, strips,

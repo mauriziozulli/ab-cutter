@@ -159,7 +159,12 @@ enum CompositionBuilder {
         // in a player setting anyone could miss.
         let passes = clip.kind == .loop ? 1 + min(max(clip.loopPasses, 1), 4) : 1
 
-        let pictureStart = videoTrack.timeRange.duration
+        // Not read off the track: an *empty* track's timeRange is invalid,
+        // not zero, and an invalid pictureStart poisons every switch time and
+        // volume ramp built on top of it — which crashes the export of any
+        // file that carries no title-card hold. After the lead insert the
+        // track is exactly leadHold long by construction, so say so.
+        let pictureStart = CMTimeCompare(leadHold, .zero) > 0 ? leadHold : .zero
         for pass in 0..<passes {
             let at = CMTimeAdd(
                 pictureStart,
@@ -329,7 +334,10 @@ enum CompositionBuilder {
         fade: CMTime
     ) -> AVMutableAudioMixInputParameters {
         let params = AVMutableAudioMixInputParameters(track: track)
-        guard CMTimeCompare(fade, .zero) > 0 else {
+        // A ramp with a non-numeric time is an exception inside AVFoundation,
+        // not an error return — flat gain is the safe rendering of bad input.
+        guard CMTIME_IS_NUMERIC(from), CMTIME_IS_NUMERIC(to),
+              CMTIME_IS_NUMERIC(fade), CMTimeCompare(fade, .zero) > 0 else {
             params.setVolume(gain, at: .zero)
             return params
         }
@@ -363,7 +371,7 @@ enum CompositionBuilder {
         var audible = startsAudible
         params.setVolume(audible ? gain : 0, at: .zero)
 
-        for point in switchTimes {
+        for point in switchTimes where CMTIME_IS_NUMERIC(point) {
             let target: Float = audible ? 0 : gain
             let from: Float = audible ? gain : 0
             if hasFade {
