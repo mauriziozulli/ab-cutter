@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.16.1 — builds in current Xcode
+
+- **Fixed: the aligner did not parse in newer Xcode.** A lag range was
+  written with a unary minus directly before `...`, which older Swift
+  parsers accept and the current one rejects («Expected expression after
+  operator»). The bounds have names now — unambiguous in every Swift.
+- The exporter's AVFoundation import is marked `@preconcurrency`, which
+  silences the Sendable warnings newer compilers raise about the
+  framework's own reader/writer callback pattern.
+
 ## 0.16.0 — every delivery visible in the full picture
 
 - **Coloured crop outlines over the full picture.** In «Ganzes Bild» the

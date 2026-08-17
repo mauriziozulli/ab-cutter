@@ -1,5 +1,8 @@
 import AudioToolbox
-import AVFoundation
+// AVFoundation's reader/writer types predate Sendable; the media-data
+// callbacks capture them exactly the way the framework documents, so the
+// preconcurrency import keeps newer compilers from warning about it.
+@preconcurrency import AVFoundation
 import CoreMedia
 import Foundation
 

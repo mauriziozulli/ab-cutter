@@ -77,11 +77,16 @@ enum AudioAligner {
             throw AlignError.tooLittleOverlap
         }
 
-        // Stage 1: every plausible lag, coarsely.
+        // Stage 1: every plausible lag, coarsely. The bounds get names not
+        // just for the reader: a unary minus right before `...` is parsed
+        // differently across Swift versions, and this form is unambiguous
+        // in all of them.
+        let earliestLag = minimumOverlapCoarse - candidateCoarse.count
+        let latestLag = referenceCoarse.count - minimumOverlapCoarse
         let coarse = bestLag(
             reference: meanCentred(referenceCoarse),
             candidate: meanCentred(candidateCoarse),
-            lags: -(candidateCoarse.count - minimumOverlapCoarse)...(referenceCoarse.count - minimumOverlapCoarse),
+            lags: earliestLag...latestLag,
             minimumOverlap: minimumOverlapCoarse
         )
 
