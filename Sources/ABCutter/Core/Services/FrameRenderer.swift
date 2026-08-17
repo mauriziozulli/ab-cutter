@@ -23,6 +23,12 @@ struct RenderPlan {
     var labelPosition: LabelPosition
     /// Strips the composition keeps clear of the platform's own controls.
     var safeArea: SafeArea = .none
+    /// Whether the layout reserves the two mono strips.
+    var showStrips: Bool = false
+    /// Grain over the finished picture, `.26` on the website. Zero is off.
+    var grainStrength: Double = 0
+    /// Radial darkening towards the corners. Zero is off.
+    var vignetteStrength: Double = 0
     /// Full-canvas furniture — border, label, subtitle — drawn ahead of time.
     var beforeOverlay: CGImage?
     var afterOverlay: CGImage?
@@ -43,14 +49,15 @@ enum FrameRenderer {
             return CIImage(color: .black).cropped(to: target)
         }
 
-        let frame = pictureRect(
+        let frame = layout(
             targetSize: plan.targetSize,
             treatment: plan.frameTreatment,
             isBefore: isBefore,
             insetScale: plan.insetScale,
             labelPosition: plan.labelPosition,
-            safeArea: plan.safeArea
-        )
+            safeArea: plan.safeArea,
+            showStrips: plan.showStrips
+        ).picture
 
         let picture = applyLook(
             look,
@@ -61,7 +68,7 @@ enum FrameRenderer {
         // or solid card so the canvas is never empty.
         let base: CIImage
         if frame == target {
-            base = CIImage(color: .black).cropped(to: target)
+            base = CIImage(color: Brand.tinte.ciColor).cropped(to: target)
         } else {
             base = backdrop(
                 from: place(oriented, into: target, mode: .fill, panX: plan.panX, panY: plan.panY),
@@ -71,6 +78,13 @@ enum FrameRenderer {
         }
 
         var output = picture.composited(over: base).cropped(to: target)
+
+        // Veil and grain go under the furniture, not over it: on the website
+        // they are the section's `::after` and `::before`, and the type sits
+        // above both. Over the type they would only make it harder to read.
+        output = veil(output, target: target, strength: plan.vignetteStrength)
+        output = grain(output, target: target, strength: plan.grainStrength)
+
         if let overlay {
             output = CIImage(cgImage: overlay).composited(over: output)
         }
@@ -88,6 +102,96 @@ enum FrameRenderer {
     // MARK: - Layout
 
     static let labelMarginFraction: CGFloat = 0.055
+
+    /// Side margin, `--rand` on the website. Stated against the width because
+    /// that is what it holds type away from.
+    static let sideMarginFraction: CGFloat = 0.055
+
+    /// Height of one mono strip, generous enough that the line inside it has
+    /// air above and below the rule.
+    static let stripFraction: CGFloat = 0.030
+
+    /// Everywhere a playout puts something, worked out once.
+    ///
+    /// The pieces used to be computed in four places from two loose functions,
+    /// which was already awkward before the strips arrived — the label needed
+    /// the picture, the picture needed the safe area, and the tint sampler
+    /// needed both. One struct means the exporter, the preview and the sampler
+    /// cannot disagree about where anything is.
+    struct PlayoutLayout {
+        var canvas: CGRect
+        /// Canvas minus the strips reserved for the platform's own controls.
+        var content: CGRect
+        /// Mono line and its rule. Empty when the strips are off.
+        var topStrip: CGRect
+        var bottomStrip: CGRect
+        /// The picture itself — the whole canvas when it is full bleed.
+        var picture: CGRect
+        /// Where the before/after label sits.
+        var labelBand: CGRect
+        var sideMargin: CGFloat
+
+        var isInset: Bool { picture != canvas }
+        var hasStrips: Bool { topStrip.height > 0 }
+    }
+
+    static func layout(
+        targetSize: CGSize,
+        treatment: FrameTreatment,
+        isBefore: Bool,
+        insetScale: Double,
+        labelPosition: LabelPosition,
+        safeArea: SafeArea = .none,
+        showStrips: Bool = false
+    ) -> PlayoutLayout {
+        let canvas = CGRect(origin: .zero, size: targetSize)
+        let content = contentRect(targetSize: targetSize, safeArea: safeArea)
+        let side = (targetSize.width * sideMarginFraction).rounded()
+
+        // The strips sit at the inner edges of the safe area; everything else
+        // is laid out between them.
+        let stripHeight = showStrips
+            ? min((targetSize.height * stripFraction).rounded(), (content.height / 5).rounded())
+            : 0
+        let stripWidth = max(targetSize.width - side * 2, 0)
+        let topStrip = stripHeight > 0
+            ? CGRect(x: side, y: content.maxY - stripHeight, width: stripWidth, height: stripHeight)
+            : .zero
+        let bottomStrip = stripHeight > 0
+            ? CGRect(x: side, y: content.minY, width: stripWidth, height: stripHeight)
+            : .zero
+
+        let inner = CGRect(
+            x: 0,
+            y: content.minY + stripHeight,
+            width: targetSize.width,
+            height: max(content.height - stripHeight * 2, 1)
+        )
+
+        let picture = pictureRect(
+            targetSize: targetSize,
+            treatment: treatment,
+            isBefore: isBefore,
+            insetScale: insetScale,
+            labelPosition: labelPosition,
+            within: inner
+        )
+
+        return PlayoutLayout(
+            canvas: canvas,
+            content: content,
+            topStrip: topStrip,
+            bottomStrip: bottomStrip,
+            picture: picture,
+            labelBand: labelBand(
+                targetSize: targetSize,
+                pictureRect: picture,
+                position: labelPosition,
+                within: inner
+            ),
+            sideMargin: side
+        )
+    }
 
     /// The canvas minus the strips reserved for the platform's own controls.
     /// Everything the app draws itself — inset picture, border, type — is laid
@@ -110,64 +214,63 @@ enum FrameRenderer {
         return CGRect(x: 0, y: bottom, width: targetSize.width, height: height)
     }
 
-    /// Where the picture itself sits inside the canvas. An inset picture is
-    /// pushed away from the label side, so the type gets a band of its own
-    /// rather than sitting on the image.
-    static func pictureRect(
+    /// Where the picture itself sits. An inset picture is pushed away from the
+    /// label side, so the type gets a band of its own rather than sitting on
+    /// the image. `region` is whatever is left after the safe area and the
+    /// strips have taken their share.
+    private static func pictureRect(
         targetSize: CGSize,
         treatment: FrameTreatment,
         isBefore: Bool,
         insetScale: Double,
         labelPosition: LabelPosition,
-        safeArea: SafeArea = .none
+        within region: CGRect
     ) -> CGRect {
         let full = CGRect(origin: .zero, size: targetSize)
         guard treatment.isInset(before: isBefore) else { return full }
 
-        // Scaled against the safe height rather than the canvas height, so the
-        // reserved strips take their room out of the picture instead of being
-        // eaten by it. The width is untouched: no platform draws down the side.
-        let content = contentRect(targetSize: targetSize, safeArea: safeArea)
+        // Scaled against the region's height rather than the canvas height, so
+        // what is reserved comes out of the picture instead of being covered by
+        // it. The width is untouched: nothing is reserved down the sides.
         let scale = CGFloat(min(max(insetScale, 0.6), 0.98))
         let width = (targetSize.width * scale).rounded()
-        let height = (content.height * scale).rounded()
+        let height = (region.height * scale).rounded()
         let freeX = targetSize.width - width
-        let freeY = content.height - height
+        let freeY = region.height - height
         // Roughly three-quarters of the slack goes to the label side.
-        let bottom = content.minY + (labelPosition == .bottom ? freeY * 0.72 : freeY * 0.28).rounded()
+        let bottom = region.minY + (labelPosition == .bottom ? freeY * 0.72 : freeY * 0.28).rounded()
 
         return CGRect(x: (freeX / 2).rounded(), y: bottom, width: width, height: height)
     }
 
-    /// The strip of canvas the label block sits in — the margin beside an
-    /// inset picture, or a band at the edge when the picture is full bleed.
-    static func labelBand(
+    /// The band the label block sits in — the margin beside an inset picture,
+    /// or a band at the region's edge when the picture is full bleed.
+    private static func labelBand(
         targetSize: CGSize,
         pictureRect: CGRect,
         position: LabelPosition,
-        safeArea: SafeArea = .none
+        within region: CGRect
     ) -> CGRect {
-        let content = contentRect(targetSize: targetSize, safeArea: safeArea)
         let isInset = pictureRect != CGRect(origin: .zero, size: targetSize)
         if isInset {
             return position == .bottom
                 ? CGRect(
                     x: 0,
-                    y: content.minY,
+                    y: region.minY,
                     width: targetSize.width,
-                    height: max(pictureRect.minY - content.minY, 0)
+                    height: max(pictureRect.minY - region.minY, 0)
                 )
                 : CGRect(
                     x: 0,
                     y: pictureRect.maxY,
                     width: targetSize.width,
-                    height: max(content.maxY - pictureRect.maxY, 0)
+                    height: max(region.maxY - pictureRect.maxY, 0)
                 )
         }
-        let height = min((targetSize.height * 0.16).rounded(), content.height)
+        let height = min((targetSize.height * 0.16).rounded(), region.height)
         return CGRect(
             x: 0,
-            y: position == .bottom ? content.minY : content.maxY - height,
+            y: position == .bottom ? region.minY : region.maxY - height,
             width: targetSize.width,
             height: height
         )
@@ -245,6 +348,55 @@ enum FrameRenderer {
             }
             return wide.cropped(to: target).composited(over: black)
         }
+    }
+
+    // MARK: - Texture
+
+    /// The website's `::after`: a radial darkening that keeps type readable
+    /// over any picture. Its inner stop is barely there and the corners carry
+    /// almost all of it, which is what stops it reading as a filter.
+    private static func veil(_ image: CIImage, target: CGRect, strength: Double) -> CIImage {
+        let amount = min(max(strength, 0), 0.95)
+        guard amount > 0.01, let gradient = CIFilter(name: "CIRadialGradient") else { return image }
+
+        let centre = CIVector(x: target.midX, y: target.height * 0.54)
+        // 92 % of the height at the outer stop, as in the CSS.
+        gradient.setValue(centre, forKey: "inputCenter")
+        gradient.setValue(0, forKey: "inputRadius0")
+        gradient.setValue(target.height * 0.6, forKey: "inputRadius1")
+        gradient.setValue(CIColor(red: 0.063, green: 0.063, blue: 0.078, alpha: amount * 0.17), forKey: "inputColor0")
+        gradient.setValue(CIColor(red: 0.063, green: 0.063, blue: 0.078, alpha: amount), forKey: "inputColor1")
+
+        guard let scrim = gradient.outputImage?.cropped(to: target) else { return image }
+        return scrim.composited(over: image).cropped(to: target)
+    }
+
+    /// The website's `::before`: fractal noise at `.26`, which is what turns a
+    /// flat colour field into something that reads as a recording.
+    ///
+    /// Regenerated per frame on purpose. Still grain over moving picture looks
+    /// like dirt on the lens; grain that moves is the one every viewer has
+    /// already accepted as film.
+    private static func grain(_ image: CIImage, target: CGRect, strength: Double) -> CIImage {
+        let amount = min(max(strength, 0), 1)
+        guard amount > 0.01, let noise = CIFilter(name: "CIRandomGenerator")?.outputImage else { return image }
+
+        // Desaturated and scaled up a little, so it reads as grain rather than
+        // as coloured pixel confetti.
+        var texture = noise.transformed(by: CGAffineTransform(scaleX: 1.6, y: 1.6)).cropped(to: target)
+        if let mono = CIFilter(name: "CIColorMatrix") {
+            mono.setValue(texture, forKey: kCIInputImageKey)
+            mono.setValue(CIVector(x: 0.33, y: 0.33, z: 0.33, w: 0), forKey: "inputRVector")
+            mono.setValue(CIVector(x: 0.33, y: 0.33, z: 0.33, w: 0), forKey: "inputGVector")
+            mono.setValue(CIVector(x: 0.33, y: 0.33, z: 0.33, w: 0), forKey: "inputBVector")
+            mono.setValue(CIVector(x: 0, y: 0, z: 0, w: amount * 0.5), forKey: "inputAVector")
+            texture = mono.outputImage ?? texture
+        }
+
+        guard let blend = CIFilter(name: "CIOverlayBlendMode") else { return image }
+        blend.setValue(texture.cropped(to: target), forKey: kCIInputImageKey)
+        blend.setValue(image, forKey: kCIInputBackgroundImageKey)
+        return (blend.outputImage ?? image).cropped(to: target)
     }
 
     // MARK: - Grade

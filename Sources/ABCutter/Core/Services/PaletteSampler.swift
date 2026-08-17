@@ -47,6 +47,15 @@ enum PaletteSampler {
         let aspect = format.size.height / format.size.width
         let proxy = CGSize(width: 200, height: (200 * aspect).rounded())
         let safeArea = settings.safeArea(for: format)
+        let layout = FrameRenderer.layout(
+            targetSize: proxy,
+            treatment: settings.frameTreatment,
+            isBefore: isBefore,
+            insetScale: settings.insetScale,
+            labelPosition: settings.labelPosition,
+            safeArea: safeArea,
+            showStrips: settings.showStrips
+        )
         let plan = RenderPlan(
             targetSize: proxy,
             fitMode: settings.fitMode,
@@ -60,6 +69,10 @@ enum PaletteSampler {
             insetScale: settings.insetScale,
             labelPosition: settings.labelPosition,
             safeArea: safeArea,
+            showStrips: settings.showStrips,
+            // The grain and the veil are deliberately left out: the tint is
+            // measured against the picture, and texture would only add noise
+            // to the reading without changing what the eye has to beat.
             beforeOverlay: nil,
             afterOverlay: nil,
             // The generator already applied the track transform.
@@ -73,26 +86,12 @@ enum PaletteSampler {
         let composed = FrameRenderer.render(CIImage(cgImage: frame), at: sampleTime, plan: plan)
         let context = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
 
-        let pictureRect = FrameRenderer.pictureRect(
-            targetSize: proxy,
-            treatment: settings.frameTreatment,
-            isBefore: isBefore,
-            insetScale: settings.insetScale,
-            labelPosition: settings.labelPosition,
-            safeArea: safeArea
-        )
-
         // The hue comes from the picture itself, the contrast from whatever the
         // type will actually sit on — backdrop included.
         return tint(
             of: composed,
-            sceneRect: pictureRect,
-            bandRect: FrameRenderer.labelBand(
-                targetSize: proxy,
-                pictureRect: pictureRect,
-                position: settings.labelPosition,
-                safeArea: safeArea
-            ),
+            sceneRect: layout.picture,
+            bandRect: layout.labelBand,
             context: context
         )
     }

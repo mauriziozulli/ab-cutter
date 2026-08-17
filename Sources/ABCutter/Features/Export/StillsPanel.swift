@@ -1,21 +1,30 @@
 import AppKit
 import SwiftUI
 
-/// The cover image: one frame grabbed at full resolution, and the title card
-/// made from it. Kept separate from the clip export because a still is what
-/// leads a post, not part of the cut.
+/// The two cards around a post: the title image that leads it and the end card
+/// that closes it. Kept separate from the clip export because a still is not
+/// part of the cut.
 @MainActor
 struct StillsPanel: View {
     @ObservedObject var state: AppState
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            titleSection
+            endSection
+            outputSection
+        }
+    }
+
+    // MARK: - Title card
+
+    private var titleSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             grabRow
             if state.grabbedFrame != nil {
-                preview
+                card(state.titleCardPreview)
                 textFields
                 filters
-                outputRow
             } else {
                 Text("Abspielkopf auf das gewünschte Bild stellen und greifen.")
                     .font(.caption2)
@@ -38,29 +47,6 @@ struct StillsPanel: View {
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
-        }
-    }
-
-    @ViewBuilder
-    private var preview: some View {
-        if let card = state.titleCardPreview {
-            HStack {
-                Spacer()
-                Image(nsImage: NSImage(cgImage: card, size: .zero))
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxHeight: 220)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(Theme.hairline, lineWidth: 1)
-                    )
-                Spacer()
-            }
-            Text("Vorschau in \(state.stillPreviewFormat.title) · \(state.stillPreviewFormat.subtitle)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
@@ -98,9 +84,112 @@ struct StillsPanel: View {
                 range: 0...0.8,
                 readout: "\(Int(state.project.stills.dimStrength * 100)) %"
             )
-            Text("Das Weichzeichnen schafft erst den Platz für den Text — die Farbe wird danach aus dem unscharfen Hintergrund gelesen, nicht aus dem Rohbild.")
+            Text(state.project.export.labelStyle.isHouse
+                 ? "Das Weichzeichnen schafft den Platz für den Text. Die Farben kommen im Haus-Stil aus der Palette, nicht aus dem Bild."
+                 : "Das Weichzeichnen schafft erst den Platz für den Text — die Farbe wird danach aus dem unscharfen Hintergrund gelesen, nicht aus dem Rohbild.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - End card
+
+    private var endSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Abspannbild je Ausgabeformat", isOn: state.stillBinding(\.saveEndCard))
+                .toggleStyle(.checkbox)
+                .font(.caption)
+
+            if state.project.stills.saveEndCard {
+                card(state.endCardPreview)
+
+                HStack(spacing: 6) {
+                    TextField("Erste Zeile", text: state.stillBinding(\.endWordmarkTop))
+                        .textFieldStyle(.roundedBorder)
+                        .controlSize(.small)
+                    TextField("Im Balken", text: state.stillBinding(\.endWordmarkBar))
+                        .textFieldStyle(.roundedBorder)
+                        .controlSize(.small)
+                }
+                TextField("Adresse", text: state.stillBinding(\.endAddress))
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                TextField("Zusatz — Credit, was zu hören war", text: state.stillBinding(\.endNote))
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+
+                Picker("Grund", selection: state.stillBinding(\.endGround)) {
+                    ForEach(EndCardGround.allCases) { ground in
+                        Text(ground.title).tag(ground)
+                    }
+                }
+                .controlSize(.small)
+
+                Text("Der Wortlaut steht wie auf dem Aufkleber: erste Zeile frei, zweite im Balken. Auf Tinte braucht das Abspannbild kein Standbild.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .abCard()
+        .abSection("Abspann")
+    }
+
+    // MARK: - Output
+
+    private var outputSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle("Bild in voller Auflösung", isOn: state.stillBinding(\.saveFullFrame))
+                .toggleStyle(.checkbox)
+                .font(.caption)
+            Toggle("Titelbild je Ausgabeformat", isOn: state.stillBinding(\.saveTitleCards))
+                .toggleStyle(.checkbox)
+                .font(.caption)
+
+            Picker("Datei", selection: state.stillBinding(\.fileFormat)) {
+                ForEach(StillFileFormat.allCases) { format in
+                    Text(format.title).tag(format)
+                }
+            }
+            .controlSize(.small)
+
+            Button("Bilder sichern") { state.saveStills() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(!wantsAnything)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .abCard()
+        .abSection("Sichern")
+    }
+
+    private var wantsAnything: Bool {
+        let stills = state.project.stills
+        return stills.saveFullFrame || stills.saveTitleCards || stills.saveEndCard
+    }
+
+    // MARK: - Helpers
+
+    @ViewBuilder
+    private func card(_ image: CGImage?) -> some View {
+        if let image {
+            HStack {
+                Spacer()
+                Image(nsImage: NSImage(cgImage: image, size: .zero))
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxHeight: 220)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Theme.hairline, lineWidth: 1)
+                    )
+                Spacer()
+            }
+            Text("Vorschau in \(state.stillPreviewFormat.title) · \(state.stillPreviewFormat.subtitle)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
@@ -120,29 +209,6 @@ struct StillsPanel: View {
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .frame(width: 42, alignment: .trailing)
-        }
-    }
-
-    private var outputRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Toggle("Bild in voller Auflösung", isOn: state.stillBinding(\.saveFullFrame))
-                .toggleStyle(.checkbox)
-                .font(.caption)
-            Toggle("Titelbild je Ausgabeformat", isOn: state.stillBinding(\.saveTitleCards))
-                .toggleStyle(.checkbox)
-                .font(.caption)
-
-            Picker("Datei", selection: state.stillBinding(\.fileFormat)) {
-                ForEach(StillFileFormat.allCases) { format in
-                    Text(format.title).tag(format)
-                }
-            }
-            .controlSize(.small)
-
-            Button("Bilder sichern") { state.saveStills() }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(!state.project.stills.saveFullFrame && !state.project.stills.saveTitleCards)
         }
     }
 }

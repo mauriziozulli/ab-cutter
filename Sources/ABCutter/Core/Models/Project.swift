@@ -352,6 +352,12 @@ enum FrameBackdrop: String, Codable, CaseIterable, Identifiable, Sendable {
 
 /// How the burnt-in before/after label is drawn.
 enum LabelStyle: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// The sticker: the word in a field of the accent colour, set in ink,
+    /// with a hard contour. Same arrangement as the second line of the
+    /// wordmark, and the reason a playout is recognisable as the same brand.
+    case balken
+    /// The lead face in bone, no field. The quieter half of the house style.
+    case knochen
     /// Bold plain type, tinted with the dominant hue of the cropped frame.
     case tinted
     /// White type on a translucent pill — safe on any footage.
@@ -361,10 +367,16 @@ enum LabelStyle: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
+        case .balken: "Balken (Haus)"
+        case .knochen: "Knochen (Haus)"
         case .tinted: "Farbe aus dem Bild"
         case .pill: "Weiss auf Fläche"
         }
     }
+
+    /// True for the two that take their colour from the palette rather than
+    /// from the picture, so the sampler can be skipped entirely.
+    var isHouse: Bool { self == .balken || self == .knochen }
 }
 
 /// A drop shadow is the only thing that keeps plain type readable over
@@ -504,12 +516,31 @@ struct ExportSettings: Codable, Hashable {
     /// A quieter second line under the label — film title, direction, credits.
     var subtitleText: String = ""
     var labelPosition: LabelPosition = .bottom
-    var labelStyle: LabelStyle = .tinted
+    var labelStyle: LabelStyle = .balken
     var labelShadow: LabelShadowMode = .auto
     /// Length of the audio crossfade centred on the split, in milliseconds.
     var audioCrossfadeMilliseconds: Double = 40
     /// Manual bitrate override in Mbit/s. `nil` uses the automatic estimate.
     var videoBitrateMbps: Double?
+    /// Which of the Sound Matters family carries this project. Ochre by
+    /// default: the website's film section runs in ochre, and an A/B out of a
+    /// finished film belongs to that section.
+    var accent: BrandAccent = .ocker
+    /// The two mono strips with their hard rules, top and bottom — the frame
+    /// of the sticker, unfolded. Off leaves the big label on its own.
+    var showStrips: Bool = true
+    /// Top left. Empty falls back to the film's name.
+    var stripLeft: String = ""
+    /// Bottom left. Empty leaves the corner clear.
+    var stripNote: String = ""
+    /// Bottom right. The address under the wordmark on the sticker.
+    var stripAddress: String = "soundmatters.audio"
+    /// Grain over the picture, `opacity: .26` on the site. Zero is off.
+    var grainStrength: Double = 0.26
+    /// The site's veil, a radial darkening towards the corners. Its outer stop
+    /// is `.72`; a playout is dialled back because it puts type in the corners
+    /// where the site puts none. Zero is off.
+    var vignetteStrength: Double = 0.55
     /// Keep the frame and the burnt-in type out of the strips where a story
     /// player draws its own controls.
     var respectPlayerChrome: Bool = true
@@ -559,6 +590,13 @@ struct ExportSettings: Codable, Hashable {
             audioCrossfadeMilliseconds = value
         }
         if let value = try? box.decode(Double.self, forKey: .videoBitrateMbps) { videoBitrateMbps = value }
+        if let value = try? box.decode(BrandAccent.self, forKey: .accent) { accent = value }
+        if let value = try? box.decode(Bool.self, forKey: .showStrips) { showStrips = value }
+        if let value = try? box.decode(String.self, forKey: .stripLeft) { stripLeft = value }
+        if let value = try? box.decode(String.self, forKey: .stripNote) { stripNote = value }
+        if let value = try? box.decode(String.self, forKey: .stripAddress) { stripAddress = value }
+        if let value = try? box.decode(Double.self, forKey: .grainStrength) { grainStrength = value }
+        if let value = try? box.decode(Double.self, forKey: .vignetteStrength) { vignetteStrength = value }
         if let value = try? box.decode(Bool.self, forKey: .respectPlayerChrome) { respectPlayerChrome = value }
         if let value = try? box.decode(Double.self, forKey: .chromeSafeTop) { chromeSafeTop = value }
         if let value = try? box.decode(Double.self, forKey: .chromeSafeBottom) { chromeSafeBottom = value }
@@ -599,6 +637,25 @@ enum StillFileFormat: String, Codable, CaseIterable, Identifiable, Sendable {
     var fileExtension: String { self == .png ? "png" : "jpg" }
 }
 
+/// What an end card is laid on.
+enum EndCardGround: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// Plain ink. Reads as the printed sticker rather than as another frame of
+    /// the film, which is what a card whose job is the address wants.
+    case tinte
+    /// The grabbed frame, softened and darkened like the title card, so the
+    /// last image still belongs to the post it closes.
+    case frame
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .tinte: "Tinte (wie der Aufkleber)"
+        case .frame: "Standbild, weichgezeichnet"
+        }
+    }
+}
+
 /// The cover image of a post: one frame grabbed at full resolution, optionally
 /// cropped to a social format and laid out as a title card.
 struct StillSettings: Codable, Hashable {
@@ -614,6 +671,20 @@ struct StillSettings: Codable, Hashable {
     /// Write a title card per selected social format.
     var saveTitleCards: Bool = true
     var fileFormat: StillFileFormat = .png
+
+    // MARK: - The end card
+
+    /// Write a closing card per selected format — the last image of a post.
+    var saveEndCard: Bool = true
+    /// The wordmark, in two lines. The second sits in the bar, exactly as on
+    /// the sticker: whoever has seen the sticker recognises the card.
+    var endWordmarkTop: String = "Sound is what"
+    var endWordmarkBar: String = "matters."
+    /// The address under the wordmark.
+    var endAddress: String = "soundmatters.audio"
+    /// One quieter line under the address — a credit, or what the reel showed.
+    var endNote: String = ""
+    var endGround: EndCardGround = .tinte
 
     var hasText: Bool {
         !headline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -634,6 +705,12 @@ struct StillSettings: Codable, Hashable {
         if let value = try? box.decode(Bool.self, forKey: .saveFullFrame) { saveFullFrame = value }
         if let value = try? box.decode(Bool.self, forKey: .saveTitleCards) { saveTitleCards = value }
         if let value = try? box.decode(StillFileFormat.self, forKey: .fileFormat) { fileFormat = value }
+        if let value = try? box.decode(Bool.self, forKey: .saveEndCard) { saveEndCard = value }
+        if let value = try? box.decode(String.self, forKey: .endWordmarkTop) { endWordmarkTop = value }
+        if let value = try? box.decode(String.self, forKey: .endWordmarkBar) { endWordmarkBar = value }
+        if let value = try? box.decode(String.self, forKey: .endAddress) { endAddress = value }
+        if let value = try? box.decode(String.self, forKey: .endNote) { endNote = value }
+        if let value = try? box.decode(EndCardGround.self, forKey: .endGround) { endGround = value }
     }
 }
 

@@ -12,11 +12,73 @@ struct LookPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            houseSection
             frameSection
             safeAreaSection
             gradeSection
             labelSection
         }
+    }
+
+    // MARK: - House style
+
+    /// The Sound Matters system: which of the family carries the project, the
+    /// two mono strips, and the texture that turns a flat crop into something
+    /// that reads as a recording.
+    private var houseSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Farbe", selection: state.exportBinding(\.accent)) {
+                ForEach(BrandAccent.allCases) { accent in
+                    Text(accent.title).tag(accent)
+                }
+            }
+            .controlSize(.small)
+            .help(state.project.export.accent.note)
+
+            Toggle("Zeilen oben und unten", isOn: state.exportBinding(\.showStrips))
+                .toggleStyle(.checkbox)
+                .help("Mono-Zeile mit harter Linie an beiden Enden — der Rahmen des Aufklebers, aufgeklappt")
+
+            if state.project.export.showStrips {
+                TextField("Oben links — leer nimmt den Filmnamen", text: state.exportBinding(\.stripLeft))
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                TextField("Unten links", text: state.exportBinding(\.stripNote))
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                TextField("Unten rechts — Adresse", text: state.exportBinding(\.stripAddress))
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+
+                Text("Oben rechts steht die Tonspur, die gerade läuft — sie wechselt mit dem A/B.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            labelledSlider(
+                "Korn",
+                value: state.exportBinding(\.grainStrength),
+                range: 0...0.6,
+                readout: "\(Int(state.project.export.grainStrength * 100)) %"
+            )
+            labelledSlider(
+                "Schleier",
+                value: state.exportBinding(\.vignetteStrength),
+                range: 0...0.9,
+                readout: "\(Int(state.project.export.vignetteStrength * 100)) %"
+            )
+
+            if !Typography.housefacesAvailable {
+                Label(
+                    "Die Hausschriften liessen sich nicht laden — gesetzt wird in Arial Black, Didot und Courier.",
+                    systemImage: "exclamationmark.triangle"
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .abCard()
+        .abSection("Haus-Stil")
     }
 
     // MARK: - Frame

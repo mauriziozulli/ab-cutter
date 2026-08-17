@@ -37,9 +37,11 @@ SWIFT
 sed 's/^import CoreGraphics$//' \
     "$ROOT/Sources/ABCutter/Core/Models/Project.swift" > "$WORK/Project.swift"
 cp "$ROOT/Sources/ABCutter/Core/Models/Timecode.swift" "$WORK/Timecode.swift"
+cp "$ROOT/Sources/ABCutter/Core/Models/BrandAccent.swift" "$WORK/BrandAccent.swift"
 
 echo "▸ Type-checking the model layer…"
-if ! swiftc -typecheck "$WORK/Shim.swift" "$WORK/Project.swift" "$WORK/Timecode.swift"; then
+if ! swiftc -typecheck "$WORK/Shim.swift" "$WORK/Project.swift" "$WORK/Timecode.swift" \
+    "$WORK/BrandAccent.swift"; then
     echo "✗ Models do not type-check — the paths above are copies, fix the originals in Sources/."
     exit 1
 fi
@@ -118,5 +120,6 @@ SWIFT
 
 echo "▸ Running the model checks…"
 swiftc -o "$WORK/checks" \
-    "$WORK/Shim.swift" "$WORK/Project.swift" "$WORK/Timecode.swift" "$WORK/main.swift"
+    "$WORK/Shim.swift" "$WORK/Project.swift" "$WORK/Timecode.swift" \
+    "$WORK/BrandAccent.swift" "$WORK/main.swift"
 "$WORK/checks"

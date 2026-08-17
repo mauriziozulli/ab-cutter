@@ -19,6 +19,12 @@ finished film and exports before/after social-media excerpts from it.
   the exporter as finished images. The exporter itself must not touch AppKit.
 - Preserve native macOS behaviour: real menus, keyboard transport, Finder
   reveal, and no modal progress that blocks the window.
+- The look is not this app's to invent. Colours, faces and the arrangement of
+  the furniture come from the Sound Matters website
+  (`github.com/mauriziozulli/soundmatters`), whose `FARBEN.md` and
+  `src/styles/tokens.css` are the source. `Core/Brand/` restates those values
+  and nothing else may hard-code one. If the sticker changes, that repo
+  changes first and this one follows it.
 
 ## Change discipline
 

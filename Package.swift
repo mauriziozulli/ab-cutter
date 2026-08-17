@@ -16,7 +16,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "ABCutter",
-            path: "Sources/ABCutter"
+            path: "Sources/ABCutter",
+            // The three Sound Matters faces, so a playout carries the house
+            // type rather than whatever the system happens to have.
+            resources: [.copy("Resources/Schriften")]
         )
     ]
 )

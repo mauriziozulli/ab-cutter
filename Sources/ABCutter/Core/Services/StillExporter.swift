@@ -53,48 +53,98 @@ enum StillExporter {
         frame: CGImage,
         format: SocialFormat,
         settings: StillSettings,
-        fitMode: FitMode,
+        export: ExportSettings,
         panX: Double,
         panY: Double,
         safeArea: SafeArea = .none,
         scale: CGFloat = 1
     ) -> CGImage? {
-        let canvas = CGSize(
-            width: (format.size.width * scale).rounded(),
-            height: (format.size.height * scale).rounded()
-        )
-        guard canvas.width > 0, canvas.height > 0 else { return nil }
+        guard let canvas = canvasSize(format: format, scale: scale) else { return nil }
         let target = CGRect(origin: .zero, size: canvas)
         let context = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
+        let house = export.labelStyle.isHouse
 
-        var background = place(CIImage(cgImage: frame), into: target, mode: fitMode, panX: panX, panY: panY)
+        var background = place(
+            CIImage(cgImage: frame), into: target, mode: export.fitMode, panX: panX, panY: panY
+        )
         background = soften(background, target: target, strength: settings.blurStrength)
         background = dim(background, target: target, amount: settings.dimStrength)
 
         // The tint is read from the finished backdrop, not the raw frame, so it
-        // contrasts with what the type will actually sit on.
+        // contrasts with what the type will actually sit on. In the house style
+        // nothing is sampled — the palette decides.
         let band = textBand(targetSize: canvas, position: settings.textPosition, safeArea: safeArea)
-        let tint = PaletteSampler.tint(
-            of: background,
-            sceneRect: target,
-            bandRect: band,
-            context: context
-        )
+        let tint = house
+            ? LabelTint.white
+            : PaletteSampler.tint(of: background, sceneRect: target, bandRect: band, context: context)
 
         var composed = background
-        if let overlay = OverlayRenderer.titleCard(
+        if let overlay = CardRenderer.titleCard(
             targetSize: canvas,
             headline: settings.headline,
             subline: settings.subline,
+            accent: export.accent.colour,
+            house: house,
             tint: tint,
             position: settings.textPosition,
-            shadow: tint.needsShadow,
+            shadow: house ? false : tint.needsShadow,
             safeArea: safeArea
         ) {
             composed = CIImage(cgImage: overlay).composited(over: composed)
         }
 
         return context.createCGImage(composed.cropped(to: target), from: target)
+    }
+
+    /// The card that closes a post. The frame is optional: on ink the wordmark
+    /// stands on its own, which is what a card whose job is the address wants.
+    @MainActor
+    static func endCard(
+        frame: CGImage?,
+        format: SocialFormat,
+        settings: StillSettings,
+        export: ExportSettings,
+        panX: Double,
+        panY: Double,
+        safeArea: SafeArea = .none,
+        scale: CGFloat = 1
+    ) -> CGImage? {
+        guard let canvas = canvasSize(format: format, scale: scale) else { return nil }
+        let target = CGRect(origin: .zero, size: canvas)
+        let context = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
+
+        var background = CIImage(color: Brand.tinte.ciColor).cropped(to: target)
+        if settings.endGround == .frame, let frame {
+            var picture = place(
+                CIImage(cgImage: frame), into: target, mode: export.fitMode, panX: panX, panY: panY
+            )
+            picture = soften(picture, target: target, strength: max(settings.blurStrength, 55))
+            // Darker than a title card: here the wordmark has to win outright.
+            picture = dim(picture, target: target, amount: max(settings.dimStrength, 0.45))
+            background = picture
+        }
+
+        guard let overlay = CardRenderer.endCard(
+            targetSize: canvas,
+            wordmarkTop: settings.endWordmarkTop,
+            wordmarkBar: settings.endWordmarkBar,
+            address: settings.endAddress,
+            note: settings.endNote,
+            accent: export.accent.colour,
+            safeArea: safeArea
+        ) else { return nil }
+
+        let composed = CIImage(cgImage: overlay).composited(over: background)
+        return context.createCGImage(composed.cropped(to: target), from: target)
+    }
+
+    private static func canvasSize(format: SocialFormat, scale: CGFloat) -> CGSize? {
+        let canvas = CGSize(
+            width: (format.size.width * scale).rounded(),
+            height: (format.size.height * scale).rounded()
+        )
+        guard canvas.width > 0, canvas.height > 0 else { return nil }
+        return canvas
     }
 
     static func write(_ image: CGImage, to url: URL, as fileFormat: StillFileFormat) throws {

@@ -28,6 +28,17 @@ switch, which reads instantly on a phone and mirrors what the sound is doing.
 Black and white remains available, along with muted colour and a plain full
 bleed.
 
+**Everything comes out in the Sound Matters style.** The look is not this
+app's own: ink as the ground, bone as the type, and one of the five family
+colours per project, taken straight from the website's `FARBEN.md`. Archivo
+Black, Bodoni Moda and Space Mono are bundled — the same files the site serves
+— so a playout and a page are set in the same faces. The before/after label is
+the sticker's arrangement: the first half in plain bone, the second in a field
+of the accent with ink type and a hard contour, the way `matters.` sits in the
+wordmark. A mono strip runs over a hard rule at each end, carrying the film,
+the layer you are hearing, and the address. Grain and a veil sit over the
+picture the way they do over every section of the site.
+
 **Stay clear of the story chrome.** A 9:16 clip plays full screen with the
 account name over the top of it and the reply field over the bottom, so a
 frame drawn towards the canvas edge disappears underneath them. The app
@@ -59,9 +70,12 @@ looking like a series.
 **Make the cover image.** Park the playhead and grab that frame at the film's
 native resolution. The same grab doubles as a title card: cropped to every
 selected format, softened and darkened so type can sit on it, with a wrapping
-headline and a quieter second line. The tint of that type is read from the
-blurred backdrop rather than the raw frame, so it contrasts with what it
-actually lands on.
+headline and a quieter second line.
+
+**And the end card.** The last image of a post: the wordmark over ink — or
+over the same frame, softened further — with `soundmatters.audio` under a rule
+at the foot. It is the one card made of nothing but type, so it needs no grab
+and can be written before a film is even loaded.
 
 **Batch-export.** The A/B switch defaults to the exact middle of each clip and
 can be moved anywhere. Export every enabled clip into every selected format in

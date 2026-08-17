@@ -3,7 +3,8 @@ import CoreMedia
 import Foundation
 
 /// The finished furniture for one clip in one format: a full-canvas overlay
-/// per half, holding the frame border, the label and the second line.
+/// per half, holding the strips, the frame border, the label and the second
+/// line.
 struct ClipOverlays {
     var before: CGImage?
     var after: CGImage?
@@ -28,39 +29,56 @@ enum LabelFactory {
         guides: Bool = false
     ) async -> ClipOverlays {
         let settings = project.export
-        let showsBorder = settings.showFrameBorder
-        let hasText = settings.showLabels
         let safeArea = settings.safeArea(for: format)
         let showsGuides = guides && !safeArea.isEmpty
 
-        // Nothing to draw at all when the labels are off and the picture is
-        // full bleed on both sides.
         let insetsAnything = settings.frameTreatment.isInset(before: true)
             || settings.frameTreatment.isInset(before: false)
-        guard hasText || showsGuides || (showsBorder && insetsAnything) else { return .empty }
+        let strips = stripText(project: project, clip: clip)
+        let anyStrip = settings.showStrips && strips.hasAny
 
-        let tints = await self.tints(project: project, clip: clip, format: format)
+        // Nothing to draw at all when the labels and strips are off and the
+        // picture is full bleed on both sides.
+        guard settings.showLabels || anyStrip || showsGuides
+            || (settings.showFrameBorder && insetsAnything) else { return .empty }
+
+        // The house styles take their colour from the palette, so the two
+        // frame decodes the sampler needs are skipped entirely.
+        let tints = settings.labelStyle.isHouse
+            ? (before: LabelTint.white, after: LabelTint.white)
+            : await self.tints(project: project, clip: clip, format: format)
 
         func overlay(isBefore: Bool, tint: LabelTint) -> CGImage? {
             OverlayRenderer.overlay(
-                targetSize: format.size,
-                pictureRect: FrameRenderer.pictureRect(
+                OverlayRequest(
                     targetSize: format.size,
-                    treatment: settings.frameTreatment,
+                    layout: FrameRenderer.layout(
+                        targetSize: format.size,
+                        treatment: settings.frameTreatment,
+                        isBefore: isBefore,
+                        insetScale: settings.insetScale,
+                        labelPosition: settings.labelPosition,
+                        safeArea: safeArea,
+                        showStrips: anyStrip
+                    ),
+                    accent: settings.accent.colour,
+                    style: settings.labelStyle,
+                    tint: tint,
                     isBefore: isBefore,
-                    insetScale: settings.insetScale,
-                    labelPosition: settings.labelPosition,
-                    safeArea: safeArea
-                ),
-                showBorder: showsBorder,
-                tint: tint,
-                title: hasText ? (isBefore ? settings.beforeLabel : settings.afterLabel) : "",
-                subtitle: hasText ? settings.subtitleText : "",
-                style: settings.labelStyle,
-                position: settings.labelPosition,
-                shadow: wantsShadow(tint, mode: settings.labelShadow, style: settings.labelStyle),
-                safeArea: safeArea,
-                guides: showsGuides
+                    showBorder: settings.showFrameBorder,
+                    title: settings.showLabels
+                        ? (isBefore ? settings.beforeLabel : settings.afterLabel)
+                        : "",
+                    subtitle: settings.showLabels ? settings.subtitleText : "",
+                    position: settings.labelPosition,
+                    shadow: wantsShadow(tint, mode: settings.labelShadow, style: settings.labelStyle),
+                    stripTopLeft: anyStrip ? strips.title : "",
+                    stripTopRight: anyStrip ? (isBefore ? strips.beforeSource : strips.afterSource) : "",
+                    stripBottomLeft: anyStrip ? strips.note : "",
+                    stripBottomRight: anyStrip ? strips.address : "",
+                    safeArea: safeArea,
+                    guides: showsGuides
+                )
             )
         }
 
@@ -70,8 +88,36 @@ enum LabelFactory {
         )
     }
 
+    /// What goes in the four corners.
+    struct StripText {
+        var title: String
+        /// Which layer is heard on that half. This is the one caption an A/B
+        /// actually needs, and it is the website's `einordnung` slot.
+        var beforeSource: String
+        var afterSource: String
+        var note: String
+        var address: String
+
+        var hasAny: Bool {
+            !title.isEmpty || !beforeSource.isEmpty || !afterSource.isEmpty
+                || !note.isEmpty || !address.isEmpty
+        }
+    }
+
+    static func stripText(project: ABProject, clip: Clip) -> StripText {
+        let settings = project.export
+        let given = settings.stripLeft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return StripText(
+            title: given.isEmpty ? project.name : given,
+            beforeSource: project.beforeSource(for: clip)?.name ?? "",
+            afterSource: project.afterSource(for: clip)?.name ?? "",
+            note: settings.stripNote.trimmingCharacters(in: .whitespacesAndNewlines),
+            address: settings.stripAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+
     /// Samples the picture for both halves, or returns neutral tints when the
-    /// pill style makes the sampling pointless.
+    /// style makes the sampling pointless.
     private static func tints(
         project: ABProject,
         clip: Clip,
@@ -107,12 +153,19 @@ enum LabelFactory {
     }
 
     private static func wantsShadow(_ tint: LabelTint, mode: LabelShadowMode, style: LabelStyle) -> Bool {
+        switch style {
         // A pill already guarantees contrast; a shadow on top only muddies it.
-        guard style == .tinted else { return false }
-        switch mode {
-        case .always: return true
-        case .off: return false
-        case .auto: return tint.needsShadow
+        case .pill: return false
+        // The house styles sit on a veil that is there precisely so type
+        // carries, and a shadow under bone on ink is just soot.
+        case .balken, .knochen:
+            return mode == .always
+        case .tinted:
+            switch mode {
+            case .always: return true
+            case .off: return false
+            case .auto: return tint.needsShadow
+            }
         }
     }
 }

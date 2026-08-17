@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.10.0 — the playouts run in the Sound Matters style
+
+The look no longer belongs to this app. Colours, faces and the arrangement of
+the furniture are taken from the website's `FARBEN.md` and `tokens.css`, and
+`Core/Brand/` restates those values so nothing else has to hard-code one.
+
+- **The palette.** Ink `#101014` as the ground, bone `#EFE6D2` as the type,
+  and one of the five family colours per project — verdigris and ochre lead,
+  because they are the printed versions of the sticker. Ochre by default: the
+  website's film section runs in ochre and an A/B out of a finished film
+  belongs to that section. The rules come with it — contrast through
+  lightness, never tone on tone, ink on any coloured field.
+- **The faces.** Archivo Black, Bodoni Moda and Space Mono are bundled and
+  registered into the process at launch. They are the same files the site
+  serves, converted from woff2, so a playout and a page cannot drift apart.
+  If registration ever fails the app says so and falls back to Arial Black,
+  Didot and Courier — the same stack the CSS names.
+- **The bar.** The before/after label is now the sticker's own arrangement:
+  the first half in plain bone, the second in a field of the accent with ink
+  type and a hard contour, exactly as `matters.` sits in the wordmark. The A/B
+  gets a typographic snap to go with the frame's. "Knochen" is the quieter
+  version, and the two older styles are still there.
+- **Two mono strips**, one at each end, over a hard rule — the frame of the
+  sticker, unfolded. Top left is the film, top right is the layer you are
+  hearing, so it changes at every switch. Bottom left is free, bottom right
+  carries the address.
+- **Grain and veil**, the site's `::before` and `::after`. The grain is
+  regenerated per frame on purpose: still grain over moving picture reads as
+  dirt on the lens, grain that moves reads as film.
+- **An end card**, the last image of a post: the wordmark over ink or over a
+  softened frame, with `soundmatters.audio` under a rule at the foot. It is
+  the one card that needs no grab, so it can be made before a film is even
+  loaded.
+- Title cards follow the same palette and faces.
+- The layout is worked out once now, in `FrameRenderer.layout`, instead of
+  being recomputed from two loose functions in four places. Strips, picture,
+  label band and safe area could disagree before; now they cannot.
+
 ## 0.9.0 — a safe area for the story chrome
 
 - The frame no longer runs under Instagram's own controls. A 9:16 clip plays

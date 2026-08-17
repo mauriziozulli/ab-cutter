@@ -696,6 +696,7 @@ final class AppState: ObservableObject {
     @Published private(set) var grabbedFrame: CGImage?
     @Published private(set) var grabbedAtSeconds: Double = 0
     @Published private(set) var titleCardPreview: CGImage?
+    @Published private(set) var endCardPreview: CGImage?
 
     /// Format the title-card preview is rendered at — the framing preview when
     /// one is chosen, otherwise the first selected output format.
@@ -730,28 +731,52 @@ final class AppState: ObservableObject {
     }
 
     func refreshTitleCardPreview() {
+        // Rendered small: the panel shows these at a couple of hundred points,
+        // and a full-size blur per slider tick would not keep up with a gesture.
+        let format = stillPreviewFormat
+        let proxy = min(1, 640 / format.size.height)
+
+        // The end card stands on ink when asked to, so it is the one card that
+        // can be previewed before a frame has been grabbed at all.
+        endCardPreview = project.stills.saveEndCard
+            ? StillExporter.endCard(
+                frame: grabbedFrame,
+                format: format,
+                settings: project.stills,
+                export: project.export,
+                panX: selectedClip?.panX ?? 0,
+                panY: selectedClip?.panY ?? 0,
+                safeArea: project.export.safeArea(for: format),
+                scale: proxy
+            )
+            : nil
+
         guard let frame = grabbedFrame else {
             titleCardPreview = nil
             return
         }
-        // Rendered small: the panel shows it at a couple of hundred points, and
-        // a full-size blur per slider tick would not keep up with the gesture.
-        let format = stillPreviewFormat
         titleCardPreview = StillExporter.titleCard(
             frame: frame,
             format: format,
             settings: project.stills,
-            fitMode: project.export.fitMode,
+            export: project.export,
             panX: selectedClip?.panX ?? 0,
             panY: selectedClip?.panY ?? 0,
             safeArea: project.export.safeArea(for: format),
-            scale: min(1, 640 / format.size.height)
+            scale: proxy
         )
     }
 
-    /// Writes the full-resolution frame and a title card per selected format.
+    /// Writes the full-resolution frame, a title card and an end card per
+    /// selected format.
     func saveStills() {
-        guard let frame = grabbedFrame else {
+        let settings = project.stills
+        // The end card on ink stands on its own, so a grab is only needed for
+        // the outputs that are actually made out of the picture.
+        let needsFrame = settings.saveFullFrame
+            || settings.saveTitleCards
+            || (settings.saveEndCard && settings.endGround == .frame)
+        if needsFrame, grabbedFrame == nil {
             errorMessage = "Zuerst ein Standbild greifen."
             return
         }
@@ -762,7 +787,6 @@ final class AppState: ObservableObject {
             return
         }
 
-        let settings = project.stills
         let stamp = Timecode.string(
             fromSeconds: grabbedAtSeconds,
             rate: project.frameRate,
@@ -771,30 +795,47 @@ final class AppState: ObservableObject {
             .replacingOccurrences(of: ";", with: "-")
         var written = 0
 
+        func name(_ part: String, _ format: SocialFormat?) -> URL {
+            let suffix = format.map { "_\($0.fileSuffix)" } ?? ""
+            return folder.appendingPathComponent(
+                "\(project.name)_\(stamp)_\(part)\(suffix).\(settings.fileFormat.fileExtension)"
+            )
+        }
+
         do {
-            if settings.saveFullFrame {
-                let url = folder.appendingPathComponent(
-                    "\(project.name)_\(stamp)_frame.\(settings.fileFormat.fileExtension)"
-                )
-                try StillExporter.write(frame, to: url, as: settings.fileFormat)
+            if settings.saveFullFrame, let frame = grabbedFrame {
+                try StillExporter.write(frame, to: name("frame", nil), as: settings.fileFormat)
                 written += 1
             }
 
-            if settings.saveTitleCards {
-                for format in project.export.formats {
-                    guard let card = StillExporter.titleCard(
-                        frame: frame,
-                        format: format,
-                        settings: settings,
-                        fitMode: project.export.fitMode,
-                        panX: selectedClip?.panX ?? 0,
-                        panY: selectedClip?.panY ?? 0,
-                        safeArea: project.export.safeArea(for: format)
-                    ) else { continue }
-                    let url = folder.appendingPathComponent(
-                        "\(project.name)_\(stamp)_title_\(format.fileSuffix).\(settings.fileFormat.fileExtension)"
-                    )
-                    try StillExporter.write(card, to: url, as: settings.fileFormat)
+            for format in project.export.formats {
+                let safeArea = project.export.safeArea(for: format)
+
+                if settings.saveTitleCards, let frame = grabbedFrame,
+                   let card = StillExporter.titleCard(
+                       frame: frame,
+                       format: format,
+                       settings: settings,
+                       export: project.export,
+                       panX: selectedClip?.panX ?? 0,
+                       panY: selectedClip?.panY ?? 0,
+                       safeArea: safeArea
+                   ) {
+                    try StillExporter.write(card, to: name("title", format), as: settings.fileFormat)
+                    written += 1
+                }
+
+                if settings.saveEndCard,
+                   let card = StillExporter.endCard(
+                       frame: grabbedFrame,
+                       format: format,
+                       settings: settings,
+                       export: project.export,
+                       panX: selectedClip?.panX ?? 0,
+                       panY: selectedClip?.panY ?? 0,
+                       safeArea: safeArea
+                   ) {
+                    try StillExporter.write(card, to: name("abspann", format), as: settings.fileFormat)
                     written += 1
                 }
             }
