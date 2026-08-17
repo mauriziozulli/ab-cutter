@@ -2,8 +2,8 @@
 
 A small native macOS app for one job: lay every available audio version under
 a finished film, then cut social-media excerpts that switch from **before** to
-**after** halfway through — the first half framed and muted with the original
-track, the second snapping out to full bleed with your mix.
+**after** halfway through — the original track first, your mix second, with the
+picture holding still so the ear has nothing to compete with.
 
 No NLE round-trip, no manual re-crop for every aspect ratio.
 
@@ -132,14 +132,16 @@ so the first launch needs **right-click → Open**.
 | Duration, size, channels | `Core/Services/MediaProbe.swift` |
 | Peak envelopes | `Core/Services/WaveformExtractor.swift` |
 | Track layout and A/B mix | `Core/Services/CompositionBuilder.swift` |
-| Crop, pan, grade, framing | `Core/Services/FrameRenderer.swift` |
-| Border, label, second line | `Core/Services/OverlayRenderer.swift` |
-| Label tint sampling | `Core/Services/PaletteSampler.swift` |
+| Palette and the three faces | `Core/Brand/Brand.swift`, `Core/Brand/Typography.swift` |
+| Crop, pan, grade, framing, texture | `Core/Services/FrameRenderer.swift` |
+| Strips, border, label, second line | `Core/Services/OverlayRenderer.swift` |
+| Title and end cards | `Core/Services/CardRenderer.swift` |
+| Label tint sampling (non-house styles) | `Core/Services/PaletteSampler.swift` |
 | Overlay assembly | `Core/Services/LabelFactory.swift` |
 | Reader → writer encode | `Core/Services/ClipExporter.swift` |
 | Batch run | `Core/Services/ExportQueue.swift` |
 | Menu bar and shortcuts | `App/AppCommands.swift` |
-| Framegrabs and title cards | `Core/Services/StillExporter.swift` |
+| Framegrabs and card composition | `Core/Services/StillExporter.swift` |
 
 ### The timeline model
 
