@@ -45,7 +45,10 @@ struct AlignmentResult: Sendable {
 /// first twelve minutes of each file, which bounds memory and is more sync
 /// evidence than any two-pop ever offered.
 enum AudioAligner {
-    private static let sampleRate = 4_000.0
+    /// The decode rate. 8 kHz is AVFoundation's floor for an audio-mix
+    /// output — anything lower is rejected at init — and is still far more
+    /// than the 200 Hz envelope needs.
+    private static let sampleRate = 8_000.0
     private static let envelopeRate = 200.0
     private static let coarseRate = 12.5
     private static let analysisCapSeconds = 12.0 * 60.0

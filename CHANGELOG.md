@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.2 — waveform sync survives its first real Mac
+
+- **Fixed: syncing by waveform crashed before analysing anything.** The
+  aligner asked AVFoundation to decode at 4 kHz, and the audio-mix output
+  refuses any rate below 8 kHz at init — an exception, not an error. The
+  analysis now decodes at 8 kHz; the envelope rates and the maths on top of
+  them are unchanged, so accuracy and confidence read exactly as before.
+
 ## 0.14.1 — R and T zoom the timeline
 
 - Bare **T** zooms in, bare **R** zooms out — the Pro Tools arrangement, T to
