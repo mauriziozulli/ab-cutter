@@ -116,6 +116,8 @@ for back a frame, play, forward a frame, with Shift for ten. ⌘N drops an A/B
 clip at the playhead and ⇧⌘N a loop, ⇧⌘P plays the selected clip exactly as
 it will be exported, ⌘[ and ⌘] mark in and out, ⌘\\ moves the A/B switch, and
 ⌘0–⌘4 flip the framing preview between full frame and each social format.
+Bare **T** and **R** zoom the timeline in and out, the Pro Tools way — they
+stay quiet while a text field is being typed into.
 Shortcuts all carry a modifier on purpose: a bare key equivalent would be
 swallowed before it reached a text field.
 

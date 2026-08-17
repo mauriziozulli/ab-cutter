@@ -4,6 +4,12 @@ import SwiftUI
 struct RootView: View {
     @ObservedObject var state: AppState
 
+    /// Bare R and T zoom the timeline, exactly as a Pro Tools hand expects —
+    /// R out, T in, T sits to the right of R. Bare keys cannot be menu
+    /// equivalents here, because those fire even while a text field is being
+    /// typed into; a local monitor can check who has focus first.
+    @State private var zoomKeyMonitor: Any?
+
     var body: some View {
         VStack(spacing: 0) {
             HSplitView {
@@ -36,6 +42,32 @@ struct RootView: View {
             message: { Text(state.errorMessage ?? "") }
         )
         .navigationTitle(state.windowTitle)
+        .onAppear { installZoomKeys() }
+    }
+
+    private func installZoomKeys() {
+        guard zoomKeyMonitor == nil else { return }
+        zoomKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // Only bare keys — anything with a modifier belongs to the menus.
+            guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else {
+                return event
+            }
+            // Typing beats zooming: while any text field is being edited the
+            // keystroke is text, not a command. (A focused TextField routes
+            // through the window's field editor, which is an NSTextView.)
+            if NSApp.keyWindow?.firstResponder is NSTextView { return event }
+
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case "t":
+                state.zoomTimeline(by: 1.6)
+                return nil
+            case "r":
+                state.zoomTimeline(by: 1 / 1.6)
+                return nil
+            default:
+                return event
+            }
+        }
     }
 
     // MARK: - Inspector

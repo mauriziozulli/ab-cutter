@@ -163,9 +163,9 @@ struct AppCommands: Commands {
 
             Divider()
 
-            Button("Zeitleiste vergrössern") { state.zoomTimeline(by: 1.6) }
+            Button("Zeitleiste vergrössern (T)") { state.zoomTimeline(by: 1.6) }
                 .keyboardShortcut("=", modifiers: .command)
-            Button("Zeitleiste verkleinern") { state.zoomTimeline(by: 1 / 1.6) }
+            Button("Zeitleiste verkleinern (R)") { state.zoomTimeline(by: 1 / 1.6) }
                 .keyboardShortcut("-", modifiers: .command)
             Button("Ganzer Film") { state.zoom = 1 }
 

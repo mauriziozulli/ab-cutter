@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.14.1 — R and T zoom the timeline
+
+- Bare **T** zooms in, bare **R** zooms out — the Pro Tools arrangement, T to
+  the right of R. Centred on the playhead, like the zoom always was.
+- Bare keys are deliberately not menu equivalents: those fire even while a
+  text field is being typed into. A local key monitor checks who has focus
+  first, so typing an R into a clip name stays an R.
+- The menu items name the keys; ⌘⌥↑ and ⌘⌥↓ keep working.
+
 ## 0.14.0 — cards per clip, three cards per clip panel, and a free playhead
 
 - **Each clip words its own two cards.** Titel, Untertitel and Abspann-Zusatz
