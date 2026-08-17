@@ -29,6 +29,10 @@ struct ExportRequest {
     var settings: ExportSettings
     var outputURL: URL
     var overlays: ClipOverlays
+    /// Held at each end of the file when the cards are attached. Both nil for
+    /// a plain clip.
+    var titleCard: CGImage?
+    var endCard: CGImage?
 }
 
 /// Renders one clip into one social format using an AVAssetReader →
@@ -40,7 +44,15 @@ enum ClipExporter {
         request: ExportRequest,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws {
-        let clipComposition = try await CompositionBuilder.buildClip(project: project, clip: request.clip)
+        // A card only gets a hold if there is a card to put in it, so a failed
+        // grab shortens the file rather than leaving a blank stretch.
+        let hold = request.settings.cardHold(for: request.format)
+        let clipComposition = try await CompositionBuilder.buildClip(
+            project: project,
+            clip: request.clip,
+            lead: request.titleCard == nil ? 0 : hold.lead,
+            tail: request.endCard == nil ? 0 : hold.tail
+        )
         let composition = clipComposition.composition
 
         let totalSeconds = CMTimeGetSeconds(clipComposition.duration)
@@ -64,6 +76,9 @@ enum ClipExporter {
             vignetteStrength: request.settings.vignetteStrength,
             beforeOverlay: request.overlays.before,
             afterOverlay: request.overlays.after,
+            titleCard: request.titleCard,
+            endCard: request.endCard,
+            pictureRange: clipComposition.pictureRange,
             sourceNaturalSize: clipComposition.videoNaturalSize,
             sourcePreferredTransform: clipComposition.videoPreferredTransform
         )

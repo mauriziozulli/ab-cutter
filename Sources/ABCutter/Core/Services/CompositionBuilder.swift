@@ -29,14 +29,19 @@ struct TimelineComposition {
     var duration: CMTime
 }
 
-/// A composition trimmed to one clip, with the clip starting at t = 0.
+/// A composition trimmed to one clip, with the clip starting after whatever
+/// hold the title card was given — at t = 0 when there is none.
 struct ClipComposition {
     var composition: AVMutableComposition
     var audioMix: AVAudioMix?
     var duration: CMTime
-    /// Where the picture and sound flip, measured from the start of the clip.
-    /// They alternate, so an odd index is a flip back to the before source.
+    /// Where the picture and sound flip, in the composition's own time, so
+    /// already shifted past the lead. They alternate, so an odd index is a
+    /// flip back to the before source.
     var switchTimes: [CMTime]
+    /// The stretch the film itself occupies. Anything before it belongs to the
+    /// title card, anything after it to the end card.
+    var pictureRange: CMTimeRange
     var videoNaturalSize: CGSize
     var videoPreferredTransform: CGAffineTransform
     var frameDuration: CMTime
@@ -99,10 +104,20 @@ enum CompositionBuilder {
 
     // MARK: - Clip composition
 
-    /// Builds a composition holding exactly one clip, starting at t = 0, with
-    /// an audio mix that crossfades from the "before" source to the "after"
-    /// source at the split point.
-    static func buildClip(project: ABProject, clip: Clip) async throws -> ClipComposition {
+    /// Builds a composition holding exactly one clip, with an audio mix that
+    /// crossfades from the "before" source to the "after" source at each
+    /// switch.
+    ///
+    /// `lead` and `tail` are the holds for the title and end cards. The cards
+    /// themselves are drawn by the renderer; what is needed here is time on
+    /// the video track for them to occupy, because a Core Image handler is
+    /// only asked for frames where the composition actually has some.
+    static func buildClip(
+        project: ABProject,
+        clip: Clip,
+        lead: Double = 0,
+        tail: Double = 0
+    ) async throws -> ClipComposition {
         guard let videoURL = project.videoURL else { throw CompositionError.noVideo }
         guard clip.duration > 0 else { throw CompositionError.emptyClip }
 
@@ -122,10 +137,41 @@ enum CompositionBuilder {
             withMediaType: .video,
             preferredTrackID: kCMPersistentTrackID_Invalid
         ) else { throw CompositionError.trackCreationFailed }
-        try videoTrack.insertTimeRange(clipRange, of: sourceVideo, at: .zero)
 
-        // Switches are stored in project time; inside the clip they are relative.
-        let switchTimes = clip.switches.map { CMTimeSubtract(time($0), clipStart) }
+        // A hold is a short seed of the film slowed to fill it. A single frame
+        // stretched sixty times is asking a lot of the compositor, so the seed
+        // is up to half a second and the slowdown stays modest. What it looks
+        // like does not matter: the card is opaque and covers all of it.
+        let leadHold = time(lead)
+        let tailHold = time(tail)
+
+        if CMTimeCompare(leadHold, .zero) > 0 {
+            let seed = seedRange(at: clipRange.start, within: clipRange)
+            try videoTrack.insertTimeRange(seed, of: sourceVideo, at: .zero)
+            videoTrack.scaleTimeRange(
+                CMTimeRange(start: .zero, duration: seed.duration),
+                toDuration: leadHold
+            )
+        }
+
+        let pictureStart = videoTrack.timeRange.duration
+        try videoTrack.insertTimeRange(clipRange, of: sourceVideo, at: pictureStart)
+        let pictureRange = CMTimeRange(start: pictureStart, duration: clipRange.duration)
+
+        if CMTimeCompare(tailHold, .zero) > 0 {
+            let seed = seedRange(endingAt: clipRange.end, within: clipRange)
+            try videoTrack.insertTimeRange(seed, of: sourceVideo, at: pictureRange.end)
+            videoTrack.scaleTimeRange(
+                CMTimeRange(start: pictureRange.end, duration: seed.duration),
+                toDuration: tailHold
+            )
+        }
+
+        // Switches are stored in project time; inside the composition they are
+        // relative to the clip and then pushed past the title card's hold.
+        let switchTimes = clip.switches.map {
+            CMTimeAdd(CMTimeSubtract(time($0), clipStart), pictureStart)
+        }
 
         let beforeSource = project.beforeSource(for: clip)
         let afterSource = project.afterSource(for: clip)
@@ -139,7 +185,8 @@ enum CompositionBuilder {
                    source: source,
                    videoAsset: videoAsset,
                    into: composition,
-                   window: clipRange
+                   window: clipRange,
+                   shift: pictureStart
                ) {
                 let params = AVMutableAudioMixInputParameters(track: track)
                 params.setVolume(linearGain(source.gainDB), at: .zero)
@@ -153,7 +200,8 @@ enum CompositionBuilder {
                    source: source,
                    videoAsset: videoAsset,
                    into: composition,
-                   window: clipRange
+                   window: clipRange,
+                   shift: pictureStart
                ) {
                 parameters.append(
                     alternatingParameters(
@@ -171,7 +219,8 @@ enum CompositionBuilder {
                    source: source,
                    videoAsset: videoAsset,
                    into: composition,
-                   window: clipRange
+                   window: clipRange,
+                   shift: pictureStart
                ) {
                 parameters.append(
                     alternatingParameters(
@@ -197,6 +246,7 @@ enum CompositionBuilder {
             audioMix: audioMix,
             duration: composition.duration,
             switchTimes: switchTimes,
+            pictureRange: pictureRange,
             videoNaturalSize: try await sourceVideo.load(.naturalSize),
             videoPreferredTransform: try await sourceVideo.load(.preferredTransform),
             frameDuration: try await frameDuration(of: sourceVideo)
@@ -247,11 +297,15 @@ enum CompositionBuilder {
     /// `[offset, offset + duration]`. Only the overlap with `window` is
     /// inserted, shifted so that `window.start` lands at t = 0.
     @discardableResult
+    /// `shift` moves the placement later in the composition, which is what a
+    /// title card's hold needs: the sound belongs to the film, not to the card
+    /// in front of it.
     private static func placeAudio(
         source: AudioSource,
         videoAsset: AVURLAsset,
         into composition: AVMutableComposition,
-        window: CMTimeRange
+        window: CMTimeRange,
+        shift: CMTime = .zero
     ) async throws -> AVMutableCompositionTrack? {
         // A folded source reads from its mono companion, so the preview and
         // the export are fed by the identical audio.
@@ -287,11 +341,27 @@ enum CompositionBuilder {
         ) else { throw CompositionError.trackCreationFailed }
 
         let insertionPoint = CMTimeSubtract(overlapStart, window.start)
-        try track.insertTimeRange(assetRange, of: sourceTrack, at: CMTimeMaximum(insertionPoint, .zero))
+        try track.insertTimeRange(
+            assetRange,
+            of: sourceTrack,
+            at: CMTimeAdd(CMTimeMaximum(insertionPoint, .zero), shift)
+        )
         return track
     }
 
     // MARK: - Helpers
+
+    /// The longest hold of the film a card may be built on top of.
+    private static let seedLimit = CMTime(value: 45_000, timescale: timescale)   // 0.5 s
+
+    private static func seedRange(at start: CMTime, within range: CMTimeRange) -> CMTimeRange {
+        CMTimeRange(start: start, duration: CMTimeMinimum(seedLimit, range.duration))
+    }
+
+    private static func seedRange(endingAt end: CMTime, within range: CMTimeRange) -> CMTimeRange {
+        let duration = CMTimeMinimum(seedLimit, range.duration)
+        return CMTimeRange(start: CMTimeSubtract(end, duration), duration: duration)
+    }
 
     private static func frameDuration(of track: AVAssetTrack) async throws -> CMTime {
         if let minimum = try? await track.load(.minFrameDuration),

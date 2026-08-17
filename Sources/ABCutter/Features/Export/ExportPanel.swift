@@ -9,6 +9,7 @@ struct ExportPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             formatsSection
+            cardsSection
             deliverySection
             runSection
             if !queue.jobs.isEmpty {
@@ -53,6 +54,74 @@ struct ExportPanel: View {
                 state.project.export.formats = SocialFormat.allCases.filter { formats.contains($0) }
             }
         )
+    }
+
+    // MARK: - Cards in the video
+
+    /// Title and end card built into the file, for a reel — which has no
+    /// slides to put them on.
+    private var cardsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Im Video", selection: state.exportBinding(\.cardAttachment)) {
+                ForEach(CardAttachment.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .controlSize(.small)
+
+            if state.project.export.cardAttachment != .off {
+                slider(
+                    "Titelbild",
+                    value: state.exportBinding(\.leadSeconds),
+                    range: 0...5,
+                    readout: seconds(state.project.export.leadSeconds)
+                )
+                slider(
+                    "Abspann",
+                    value: state.exportBinding(\.tailSeconds),
+                    range: 0...10,
+                    readout: seconds(state.project.export.tailSeconds)
+                )
+
+                Text(cardHint)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .abCard()
+        .abSection("Karten im Video")
+    }
+
+    private var cardHint: String {
+        let export = state.project.export
+        let lead = export.leadSeconds
+        if lead < 0.05 {
+            return "Kein Titelbild am Anfang — im Reel macht das Cover diese Arbeit, und die erste Sekunde entscheidet, ob überhaupt geschaut wird. Der Abspann hat dagegen keinen anderen Platz als das Video selbst."
+        }
+        return "Das Titelbild kostet die erste Sekunde, und die entscheidet im Reel, ob überhaupt geschaut wird — das Cover macht diese Arbeit schon. Auf 0 stellen, wenn das Video direkt beginnen soll."
+    }
+
+    private func seconds(_ value: Double) -> String {
+        value < 0.05 ? "aus" : String(format: "%.1f s", value)
+    }
+
+    private func slider(
+        _ label: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        readout: String
+    ) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.caption)
+                .frame(width: 62, alignment: .leading)
+            Slider(value: value, in: range)
+                .controlSize(.mini)
+            Text(readout)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(width: 42, alignment: .trailing)
+        }
     }
 
     // MARK: - Delivery

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.11.0 — the cards can ride in the video
+
+- Title card and end card can now be built into the exported file, held at
+  each end of the cut. A reel is a single video with no slides, so an end card
+  either sits in the file or the address is never seen at all.
+- Attached to 9:16 only by default. A feed post is a carousel, where both
+  cards are pages of their own — putting them in the video as well spends the
+  viewer's time on the same thing twice.
+- 0.8 s at the head and 2.5 s at the tail, both adjustable, either one down to
+  zero. The head is deliberately short: the first second of a reel decides
+  whether it is watched, and the reel's cover image is already doing the
+  title's job. Setting it to zero is a defensible choice and the panel says so.
+- Each card is built from that clip's own first frame, so a batch of a dozen
+  excerpts gets a dozen matching title cards without parking a playhead twelve
+  times. In a batch the headline falls back to the film's name.
+- The sound belongs to the film, not to the card in front of it: the audio and
+  every A/B switch are shifted past the head hold, so the mix still starts on
+  the first frame of picture.
+- A card that cannot be built is simply given no hold, so a failed grab
+  shortens the file instead of leaving a blank stretch in it.
+- The holds are real time on the video track — a short seed of the clip slowed
+  to fill them — because a Core Image handler is only asked for frames where
+  the composition has some. What is underneath never shows: the cards are
+  opaque and the source is dropped rather than composited over.
+
 ## 0.10.1 — the picture holds still
 
 - The frame no longer snaps to full bleed at the switch. "Durchgehend

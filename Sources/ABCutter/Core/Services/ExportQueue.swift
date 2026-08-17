@@ -131,12 +131,15 @@ final class ExportQueue: ObservableObject {
                 clip: clip,
                 format: jobs[index].format
             )
+            let cards = await Self.cards(project: project, clip: clip, format: jobs[index].format)
             let request = ExportRequest(
                 clip: clip,
                 format: jobs[index].format,
                 settings: project.export,
                 outputURL: jobs[index].outputURL,
-                overlays: overlays
+                overlays: overlays,
+                titleCard: cards.title,
+                endCard: cards.end
             )
 
             do {
@@ -169,5 +172,53 @@ final class ExportQueue: ObservableObject {
 
     func revealInFinder(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    // MARK: - The two cards
+
+    /// Builds the cards a reel carries at each end.
+    ///
+    /// Each is made from the clip's *own* first frame rather than from the
+    /// still held in the Cover tab, so a batch of a dozen excerpts gets a
+    /// dozen matching title cards without anyone parking a playhead twelve
+    /// times. A card that cannot be built comes back nil and the exporter
+    /// simply gives it no hold.
+    private static func cards(
+        project: ABProject,
+        clip: Clip,
+        format: SocialFormat
+    ) async -> (title: CGImage?, end: CGImage?) {
+        var settings = project.stills
+        let hold = project.export.cardHold(for: format)
+        let wantsTitle = hold.lead > 0
+        let wantsEnd = hold.tail > 0
+        guard wantsTitle || wantsEnd else { return (nil, nil) }
+
+        // The headline belongs to the film, and in a batch run nobody has
+        // typed one in for this clip.
+        if settings.headline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            settings.headline = project.name
+        }
+
+        // Only decoded when something is actually laid on top of the picture.
+        var frame: CGImage?
+        if let url = project.videoURL, wantsTitle || settings.endGround == .frame {
+            frame = try? await StillExporter.grab(videoURL: url, at: clip.start)
+        }
+
+        let safeArea = project.export.safeArea(for: format)
+        let title = wantsTitle ? frame.flatMap {
+            StillExporter.titleCard(
+                frame: $0, format: format, settings: settings, export: project.export,
+                panX: clip.panX, panY: clip.panY, safeArea: safeArea
+            )
+        } : nil
+        let end = wantsEnd
+            ? StillExporter.endCard(
+                frame: frame, format: format, settings: settings, export: project.export,
+                panX: clip.panX, panY: clip.panY, safeArea: safeArea
+            )
+            : nil
+        return (title, end)
     }
 }

@@ -493,6 +493,38 @@ struct SafeArea: Codable, Hashable, Sendable {
     }
 }
 
+/// Whether the title card and the end card are built into the video file
+/// itself, rather than only written out as stills.
+///
+/// A reel is a single video with no slides, so an end card has nowhere else to
+/// go: either it is in the file or the address is never seen. A feed post is a
+/// carousel, where both cards are pages of their own and putting them in the
+/// video as well only spends the viewer's time twice. Hence the default.
+enum CardAttachment: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// Only the formats that play full screen — 9:16.
+    case story
+    case always
+    case off
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .story: return "Nur 9:16 (Reel)"
+        case .always: return "Alle Formate"
+        case .off: return "Aus"
+        }
+    }
+
+    func applies(to format: SocialFormat) -> Bool {
+        switch self {
+        case .story: return format.hasPlayerChrome
+        case .always: return true
+        case .off: return false
+        }
+    }
+}
+
 enum VideoCodecChoice: String, Codable, CaseIterable, Identifiable, Sendable {
     case h264
     case hevc
@@ -556,6 +588,17 @@ struct ExportSettings: Codable, Hashable {
     /// is `.72`; a playout is dialled back because it puts type in the corners
     /// where the site puts none. Zero is off.
     var vignetteStrength: Double = 0.55
+    /// Build the two cards into the video file as well as writing them out.
+    var cardAttachment: CardAttachment = .story
+    /// How long the title card is held at the head, in seconds.
+    ///
+    /// Short on purpose. The first second of a reel is the one that decides
+    /// whether it is watched at all, and the reel's cover image is already
+    /// doing the title's job — so this is a beat to land on, not a slate.
+    var leadSeconds: Double = 0.8
+    /// How long the end card is held at the tail, in seconds. Longer, because
+    /// this one has to be read and it is the only place the address appears.
+    var tailSeconds: Double = 2.5
     /// Keep the frame and the burnt-in type out of the strips where a story
     /// player draws its own controls.
     var respectPlayerChrome: Bool = true
@@ -573,6 +616,13 @@ struct ExportSettings: Codable, Hashable {
     func safeArea(for format: SocialFormat) -> SafeArea {
         guard respectPlayerChrome, format.hasPlayerChrome else { return .none }
         return SafeArea(top: chromeSafeTop, bottom: chromeSafeBottom).clamped
+    }
+
+    /// Seconds of card at each end of the delivered file. Zero for a format
+    /// the attachment does not apply to, so the caller needs no second check.
+    func cardHold(for format: SocialFormat) -> (lead: Double, tail: Double) {
+        guard cardAttachment.applies(to: format) else { return (0, 0) }
+        return (min(max(leadSeconds, 0), 5), min(max(tailSeconds, 0), 10))
     }
 
     init() {}
@@ -612,6 +662,9 @@ struct ExportSettings: Codable, Hashable {
         if let value = try? box.decode(String.self, forKey: .stripAddress) { stripAddress = value }
         if let value = try? box.decode(Double.self, forKey: .grainStrength) { grainStrength = value }
         if let value = try? box.decode(Double.self, forKey: .vignetteStrength) { vignetteStrength = value }
+        if let value = try? box.decode(CardAttachment.self, forKey: .cardAttachment) { cardAttachment = value }
+        if let value = try? box.decode(Double.self, forKey: .leadSeconds) { leadSeconds = value }
+        if let value = try? box.decode(Double.self, forKey: .tailSeconds) { tailSeconds = value }
         if let value = try? box.decode(Bool.self, forKey: .respectPlayerChrome) { respectPlayerChrome = value }
         if let value = try? box.decode(Double.self, forKey: .chromeSafeTop) { chromeSafeTop = value }
         if let value = try? box.decode(Double.self, forKey: .chromeSafeBottom) { chromeSafeBottom = value }

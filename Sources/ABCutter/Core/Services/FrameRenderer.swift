@@ -32,6 +32,13 @@ struct RenderPlan {
     /// Full-canvas furniture — border, label, subtitle — drawn ahead of time.
     var beforeOverlay: CGImage?
     var afterOverlay: CGImage?
+    /// Finished, opaque cards held before and after the film. Both optional:
+    /// most deliveries have neither.
+    var titleCard: CGImage?
+    var endCard: CGImage?
+    /// The stretch the film occupies. Everything outside it belongs to a card.
+    /// Infinite by default, so a plain clip never takes the card path.
+    var pictureRange: CMTimeRange = CMTimeRange(start: .zero, duration: .positiveInfinity)
     var sourceNaturalSize: CGSize
     var sourcePreferredTransform: CGAffineTransform
 }
@@ -39,11 +46,20 @@ struct RenderPlan {
 /// Turns a decoded source frame into a finished social-format frame.
 enum FrameRenderer {
     static func render(_ source: CIImage, at time: CMTime, plan: RenderPlan) -> CIImage {
+        let target = CGRect(origin: .zero, size: plan.targetSize)
+
+        // Outside the film's own stretch a card owns the whole canvas. The
+        // frames underneath are a slowed seed of the clip that exists only so
+        // the compositor asks for anything here at all, and the card is opaque,
+        // so the source is dropped rather than composited over.
+        if let card = card(at: time, plan: plan) {
+            return CIImage(cgImage: card).cropped(to: target)
+        }
+
         let isBefore = Self.isBeforeSegment(at: time, switches: plan.switchTimes)
         let look = isBefore ? plan.beforeLook : plan.afterLook
         let overlay = isBefore ? plan.beforeOverlay : plan.afterOverlay
 
-        let target = CGRect(origin: .zero, size: plan.targetSize)
         let oriented = orient(source, naturalSize: plan.sourceNaturalSize, transform: plan.sourcePreferredTransform)
         guard oriented.extent.width > 0, oriented.extent.height > 0 else {
             return CIImage(color: .black).cropped(to: target)
@@ -89,6 +105,15 @@ enum FrameRenderer {
             output = CIImage(cgImage: overlay).composited(over: output)
         }
         return output.cropped(to: target)
+    }
+
+    /// The card owning this instant, if any. A missing card means the hold
+    /// falls back to the picture rather than to a hole in the file.
+    private static func card(at time: CMTime, plan: RenderPlan) -> CGImage? {
+        guard CMTIME_IS_NUMERIC(plan.pictureRange.duration) else { return nil }
+        if CMTimeCompare(time, plan.pictureRange.start) < 0 { return plan.titleCard }
+        if CMTimeCompare(time, plan.pictureRange.end) >= 0 { return plan.endCard }
+        return nil
     }
 
     /// Segments alternate, so the side is simply the parity of how many

@@ -79,6 +79,16 @@ over the same frame, softened further — with `soundmatters.audio` under a rule
 at the foot. It is the one card made of nothing but type, so it needs no grab
 and can be written before a film is even loaded.
 
+**Put both cards in the video, for a reel.** A reel is a single video with no
+slides, so an end card either sits in the file or the address is never seen.
+Both cards can therefore be held at the ends of the exported cut — 9:16 only
+by default, because a feed post is a carousel where they are pages of their
+own. The head hold is short on purpose, and worth setting to zero: the first
+second of a reel decides whether it is watched at all, and the reel's cover
+image already does the title's work. Each card is built from that clip's own
+first frame, so a batch of a dozen excerpts gets a dozen matching cards. The
+sound still starts on the first frame of picture, not under the card.
+
 **Batch-export.** The A/B switch defaults to the exact middle of each clip and
 can be moved anywhere. Export every enabled clip into every selected format in
 one run — 4:5, 9:16, 1:1 and 16:9 are all available, and the clip × format

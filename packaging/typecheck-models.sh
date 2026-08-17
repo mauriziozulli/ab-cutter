@@ -101,6 +101,21 @@ func run() throws {
     check(restored.export.respectPlayerChrome == false, "A round trip changed a toggle.")
     check(restored.stills.headline == "Titel", "A round trip changed the cover headline.")
 
+    // Cards in the video: attached to the reel format, not to the feed one,
+    // where the carousel gives them pages of their own.
+    check(ExportSettings().cardHold(for: .portrait916).tail > 0,
+          "The reel format got no end card.")
+    check(ExportSettings().cardHold(for: .portrait45).tail == 0,
+          "A feed format was given a card hold.")
+    var noCards = ExportSettings()
+    noCards.cardAttachment = .off
+    check(noCards.cardHold(for: .portrait916) == (0, 0), "Off still produced a hold.")
+    var wild = ExportSettings()
+    wild.leadSeconds = 99
+    wild.tailSeconds = -3
+    check(wild.cardHold(for: .portrait916).lead == 5, "The lead was not clamped.")
+    check(wild.cardHold(for: .portrait916).tail == 0, "The tail was not clamped.")
+
     // The safe area belongs to the story format alone.
     check(ExportSettings().safeArea(for: .portrait45).isEmpty, "A feed format reserved a strip.")
     check(!ExportSettings().safeArea(for: .portrait916).isEmpty, "The story format reserved nothing.")
