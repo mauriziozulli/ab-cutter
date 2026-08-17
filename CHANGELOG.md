@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.16.0 — every delivery visible in the full picture
+
+- **Coloured crop outlines over the full picture.** In «Ganzes Bild» the
+  player draws one rectangle per selected delivery format — 4:5 in Rost,
+  16:9 in Ocker, 9:16 in Staubblau, 1:1 in Verdigris, each labelled in its
+  own corner. The rectangles are computed through the real export layout,
+  so the safe area, the strips, the frame inset and the clip's pan all
+  count: what is inside a line is exactly what that delivery keeps.
+- The guides are a checkbox next to the format picker («Ausschnitte»), on
+  by default. They only exist over the full picture — a format preview or
+  the clip preview already shows one real crop, and guides drawn over
+  those would lie.
+- The live styled preview is unchanged and remains the place to judge a
+  single format: pick it in the format picker and the picture is cropped,
+  framed and coloured exactly as the export, updating as the controls
+  move.
+
 ## 0.15.0 — a waveform you can sync by hand
 
 - **The lanes draw real transients now.** The envelope holds one peak per

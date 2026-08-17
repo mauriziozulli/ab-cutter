@@ -73,6 +73,13 @@ split exactly as the export will: before-source until the switch, after-source
 after it. It can also render the real 4:5 or 9:16 crop and the frame while
 you scrub, so everything is decided before anything is encoded.
 
+**See every delivery at once.** Over the full picture the player draws one
+coloured outline per selected output format — 4:5 in Rost, 16:9 in Ocker,
+9:16 in Staubblau, 1:1 in Verdigris — each computed through the real export
+layout, so safe area, strips, frame inset and the clip's pan all count.
+What is inside a line is exactly what that delivery keeps. The guides are
+the «Ausschnitte» checkbox beside the format picker.
+
 **Cut to a house length.** Set the length once — 10, 15, 20, 30, 60 seconds
 or anything you type — and every new clip is that long. With the length locked,
 marking in and out slides a fixed window rather than trimming an edge, so

@@ -61,6 +61,19 @@ struct PlayerPane: View {
                 Color.black
                 if state.project.hasVideo {
                     PlayerSurface(player: player.player)
+                        .overlay {
+                            // The guides belong to the whole picture; a format
+                            // preview or clip preview already shows one real
+                            // crop, so they would only lie there.
+                            if state.showFormatGuides,
+                               player.previewFormat == nil,
+                               !player.isClipPreview {
+                                FormatGuidesOverlay(
+                                    project: state.project,
+                                    clip: state.selectedClip
+                                )
+                            }
+                        }
                 } else {
                     emptyState
                 }
@@ -126,6 +139,12 @@ struct PlayerPane: View {
             }
             .labelsHidden()
             .frame(width: 130)
+
+            Toggle("Ausschnitte", isOn: $state.showFormatGuides)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .disabled(player.previewFormat != nil || player.isClipPreview)
+                .help("Zeichnet im ganzen Bild farbige Umrisse: was jedes gewählte Ausgabeformat vom Film behält")
 
             Divider().frame(height: 16)
 

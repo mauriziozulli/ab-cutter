@@ -18,6 +18,8 @@ final class AppState: ObservableObject {
 
     /// Timeline zoom: 1 shows the whole film, higher values zoom in.
     @Published var zoom: Double = 1
+    /// Coloured crop outlines over the full picture, one per delivery format.
+    @Published var showFormatGuides = true
     /// Which inspector the right-hand column is showing.
     @Published var inspectorTab: InspectorTab = .clips
 
