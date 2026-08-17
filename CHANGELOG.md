@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.12.0 — every clip is its own playout
+
+- **The look lives on the clip now.** Colour, framing, grade, texts, strips,
+  texture, crossfade — all of it is set per clip, and a click on a clip opens
+  its settings. A new clip starts from fresh defaults on purpose: independent
+  settings are the point of planning two or three completely different
+  playouts in one project. The Look tab is gone; its sections sit under the
+  clip inspector, and only delivery — formats, codec, folder, cards, safe
+  area — remains project-wide on the Export tab.
+- **Two clip kinds.** An *A/B* flips between the two sources at each switch
+  point, as before. A *Loop* plays the selection once on the A side, then the
+  identical selection again on the B side — the honest comparison, because
+  the ear hears the same moment twice. The B side can repeat up to four
+  times. Each pass carries its own audio placement, with short edge ramps at
+  every seam so nothing clicks.
+- **The kinds have their own colours** — ochre for A/B, dust blue for a loop,
+  both from the brand family — in the timeline, the clip list and the add
+  buttons. A loop's bar carries no switch bands: its boundary lies between
+  the exported passes, not inside the selection.
+- **Clip preview in the player.** The new toggle (⇧⌘P) plays the selected
+  clip exactly as the export builds it: clip composition, audio mix, look —
+  and for a loop both passes, which the raw timeline cannot show at all.
+  Every setting edited while the preview runs rebuilds it.
+- **The A and B pickers moved up front.** With several stems loaded, each
+  clip chooses its own pair — one clip can compare the original against the
+  mix while the next compares it against the SFX stem. On a loop they read
+  "A (1. Durchlauf)" and "B (Loop)".
+- Old projects migrate on open: the global look they stored is copied into
+  every clip, key for key, and the file is rejected as before if it is not a
+  project at all.
+
 ## 0.11.1 — the cards are one pair, and the type sits in its box
 
 - The title card now has the end card's arrangement: the headline set large in

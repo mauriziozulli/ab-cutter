@@ -11,7 +11,19 @@ No NLE round-trip, no manual re-crop for every aspect ratio.
 
 **Lay the audio under the picture.** Load the finished film, then add as many
 audio layers as you like: the original production sound, your final mix,
-stems such as SFX-only or music-only. Every layer sits on its own lane.
+stems such as SFX-only or music-only. Every layer sits on its own lane, and
+every clip picks its own pair of them to compare.
+
+**Every clip is its own playout.** Colour, framing, grade, texts and texture
+are set per clip — a click on a clip opens its settings — so one project can
+plan a framed ochre A/B, a full-bleed verdigris loop and a third thing
+entirely, side by side. Two kinds of clip: an **A/B** flips between the two
+sources at each switch point while the picture runs on; a **Loop** plays the
+selection once with the A source, then the identical selection again with the
+B source — the ear hears the same moment twice, which is the honest
+comparison. The kinds carry their own colours on the timeline, and the
+player's clip preview (⇧⌘P) plays a clip exactly as it will be exported,
+loop passes included.
 
 **Sync by timecode, or by hand.** WAV files stamped with a Broadcast Wave
 `bext` time reference and QuickTime files with a `tmcd` timecode track are

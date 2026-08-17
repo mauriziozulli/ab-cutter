@@ -192,12 +192,14 @@ struct TimelineView: View {
             let rect = CGRect(x: startX, y: top, width: max(endX - startX, 2), height: height)
             let isSelected = clip.id == state.selectedClipID
             let path = Path(roundedRect: rect, cornerRadius: 3)
+            let tint = Theme.tint(for: clip.kind)
 
             // Segments alternate, so the lane is painted in bands: muted for
-            // a before stretch, saturated for an after one.
+            // a before stretch, saturated for an after one. A loop paints one
+            // even band — its repeat lives in the export, not on the timeline.
             context.fill(
                 path,
-                with: .color(Theme.clipTint.opacity(clip.isEnabled ? 0.28 : 0.10))
+                with: .color(tint.opacity(clip.isEnabled ? 0.28 : 0.10))
             )
 
             let bounds = [clip.start] + clip.switches + [clip.end]
@@ -226,13 +228,16 @@ struct TimelineView: View {
 
             context.stroke(
                 path,
-                with: .color(isSelected ? Theme.clipTint : Theme.hairline),
+                with: .color(isSelected ? tint : Theme.hairline),
                 lineWidth: isSelected ? 2 : 1
             )
 
             if rect.width > 46 {
+                let label = clip.kind == .loop
+                    ? "↻ \(clip.name)"
+                    : clip.name
                 context.draw(
-                    Text(clip.name)
+                    Text(label)
                         .font(.system(size: 9, weight: .medium)),
                     at: CGPoint(x: rect.minX + 5, y: top + height / 2),
                     anchor: .leading

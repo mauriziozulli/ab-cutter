@@ -58,22 +58,23 @@ enum ClipExporter {
         let totalSeconds = CMTimeGetSeconds(clipComposition.duration)
         guard totalSeconds.isFinite, totalSeconds > 0 else { throw CompositionError.emptyClip }
 
+        let look = request.clip.look
         let plan = RenderPlan(
             targetSize: request.format.size,
-            fitMode: request.settings.fitMode,
+            fitMode: look.fitMode,
             panX: request.clip.panX,
             panY: request.clip.panY,
             switchTimes: clipComposition.switchTimes,
-            beforeLook: request.settings.beforeLook,
-            afterLook: request.settings.afterLook,
-            frameTreatment: request.settings.frameTreatment,
-            frameBackdrop: request.settings.frameBackdrop,
-            insetScale: request.settings.insetScale,
-            labelPosition: request.settings.labelPosition,
+            beforeLook: look.beforeLook,
+            afterLook: look.afterLook,
+            frameTreatment: look.frameTreatment,
+            frameBackdrop: look.frameBackdrop,
+            insetScale: look.insetScale,
+            labelPosition: look.labelPosition,
             safeArea: request.settings.safeArea(for: request.format),
-            showStrips: request.settings.showStrips,
-            grainStrength: request.settings.grainStrength,
-            vignetteStrength: request.settings.vignetteStrength,
+            showStrips: look.showStrips,
+            grainStrength: look.grainStrength,
+            vignetteStrength: look.vignetteStrength,
             beforeOverlay: request.overlays.before,
             afterOverlay: request.overlays.after,
             titleCard: request.titleCard,

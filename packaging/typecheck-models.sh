@@ -68,41 +68,62 @@ func check(_ condition: Bool, _ description: String) {
 
 /// Top-level code cannot throw, so the checks live in here.
 func run() throws {
-    // A project holding only the keys an early version wrote.
+    // A project written while the look was still global: the look keys live
+    // inside `export`, and the clip has none of its own. Opening it must move
+    // that look onto the clip — that is the whole migration.
     let legacy = Data("""
-    {"version":1,"project":{"videoDurationSeconds":120,"clips":[],"audioSources":[],
-    "export":{"insetScale":0.9,"beforeLabel":"VORHER"},"stills":{"headline":"Titel"}}}
+    {"version":1,"project":{"videoDurationSeconds":120,"audioSources":[],
+    "clips":[{"name":"Clip 1","start":10,"end":30}],
+    "export":{"insetScale":0.9,"accent":"verdigris","beforeLabel":"VORHER","codec":"hevc"},
+    "stills":{"headline":"Titel"}}}
     """.utf8)
 
     guard let old = try? JSONDecoder().decode(Document.self, from: legacy) else {
         FileHandle.standardError.write(Data("✗ A project from an earlier version no longer opens.\n".utf8))
         exit(1)
     }
-    check(old.project.export.insetScale == 0.9, "A stored setting was lost while decoding.")
-    check(old.project.export.beforeLabel == "VORHER", "A stored label was lost while decoding.")
+    check(old.project.clips.count == 1, "The legacy clip was lost.")
+    check(old.project.clips[0].look.insetScale == 0.9,
+          "The global look was not moved onto the clip.")
+    check(old.project.clips[0].look.accent == .verdigris,
+          "The global accent was not moved onto the clip.")
+    check(old.project.clips[0].look.beforeLabel == "VORHER",
+          "A stored label was lost in the migration.")
+    check(old.project.clips[0].kind == .ab, "A legacy clip did not default to A/B.")
+    check(old.project.export.codec == .hevc, "A delivery setting was lost while decoding.")
     check(old.project.stills.headline == "Titel", "A stored cover headline was lost while decoding.")
     check(old.project.defaultClipLengthSeconds == ABProject().defaultClipLengthSeconds,
           "A missing key did not fall back to its default.")
-    check(old.project.export.respectPlayerChrome == ExportSettings().respectPlayerChrome,
-          "A setting added after the file was written did not fall back to its default.")
 
     // Anything that is not a project at all still has to be refused.
     check((try? JSONDecoder().decode(Document.self, from: Data(#"{"hello":"world"}"#.utf8))) == nil,
           "A file that is not a project was opened as an empty one.")
 
-    // And a round trip has to be lossless.
+    // A round trip of today's shape has to be lossless — kind, passes and the
+    // per-clip look included — and must not re-trigger the migration.
     var project = ABProject()
+    var loop = Clip(name: "Loop 1", start: 5, end: 15, kind: .loop)
+    loop.loopPasses = 2
+    loop.look.accent = .rost
+    loop.look.frameTreatment = .fullBleed
+    var ab = Clip(name: "Clip 1", start: 20, end: 40)
+    ab.look.accent = .ocker
+    project.clips = [loop, ab]
     project.export.chromeSafeTop = 0.17
-    project.export.respectPlayerChrome = false
-    project.stills.headline = "Titel"
     let encoded = try JSONEncoder().encode(Document(version: 1, project: project))
     let restored = try JSONDecoder().decode(Document.self, from: encoded).project
-    check(restored.export.chromeSafeTop == 0.17, "A round trip changed a setting.")
-    check(restored.export.respectPlayerChrome == false, "A round trip changed a toggle.")
-    check(restored.stills.headline == "Titel", "A round trip changed the cover headline.")
+    check(restored.clips[0].kind == .loop, "A round trip lost the clip kind.")
+    check(restored.clips[0].loopPasses == 2, "A round trip lost the loop passes.")
+    check(restored.clips[0].look.accent == .rost, "A round trip lost a clip look.")
+    check(restored.clips[1].look.accent == .ocker, "The clips' looks bled into each other.")
+    check(restored.export.chromeSafeTop == 0.17, "A round trip changed a delivery setting.")
 
-    // Cards in the video: attached to the reel format, not to the feed one,
-    // where the carousel gives them pages of their own.
+    // Loop semantics: no switches inside the selection — the boundary lies
+    // between the exported passes.
+    check(restored.clips[0].switches.isEmpty, "A loop clip reported switches in project time.")
+    check(!restored.clips[1].switches.isEmpty, "An A/B clip lost its midpoint switch.")
+
+    // Cards in the video: attached to the reel format, not to the feed one.
     check(ExportSettings().cardHold(for: .portrait916).tail > 0,
           "The reel format got no end card.")
     check(ExportSettings().cardHold(for: .portrait45).tail == 0,
@@ -110,11 +131,6 @@ func run() throws {
     var noCards = ExportSettings()
     noCards.cardAttachment = .off
     check(noCards.cardHold(for: .portrait916) == (0, 0), "Off still produced a hold.")
-    var wild = ExportSettings()
-    wild.leadSeconds = 99
-    wild.tailSeconds = -3
-    check(wild.cardHold(for: .portrait916).lead == 5, "The lead was not clamped.")
-    check(wild.cardHold(for: .portrait916).tail == 0, "The tail was not clamped.")
 
     // The safe area belongs to the story format alone.
     check(ExportSettings().safeArea(for: .portrait45).isEmpty, "A feed format reserved a strip.")

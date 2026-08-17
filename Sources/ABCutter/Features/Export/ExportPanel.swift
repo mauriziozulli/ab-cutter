@@ -10,6 +10,7 @@ struct ExportPanel: View {
         VStack(alignment: .leading, spacing: 16) {
             formatsSection
             cardsSection
+            safeAreaSection
             deliverySection
             runSection
             if !queue.jobs.isEmpty {
@@ -122,6 +123,39 @@ struct ExportPanel: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 42, alignment: .trailing)
         }
+    }
+
+    // MARK: - Story safe area
+
+    /// Project-wide, unlike the look: where Instagram draws its controls does
+    /// not change from clip to clip.
+    private var safeAreaSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Bedienelemente freihalten", isOn: state.exportBinding(\.respectPlayerChrome))
+                .toggleStyle(.checkbox)
+                .help("Hält Rahmen und Text aus den Streifen heraus, in die Instagram Kontoname und Antwortfeld zeichnet")
+
+            if state.project.export.respectPlayerChrome {
+                slider(
+                    "Oben",
+                    value: state.exportBinding(\.chromeSafeTop),
+                    range: 0...SafeArea.maximum,
+                    readout: "\(Int(state.project.export.chromeSafeTop * 100)) %"
+                )
+                slider(
+                    "Unten",
+                    value: state.exportBinding(\.chromeSafeBottom),
+                    range: 0...SafeArea.maximum,
+                    readout: "\(Int(state.project.export.chromeSafeBottom * 100)) %"
+                )
+
+                Text("Gilt nur für 9:16 — ein Beitrag im Feed hat keine Bedienelemente über dem Bild. Im Vorschauformat 9:16 markieren gestrichelte Linien die Streifen; exportiert werden sie nie.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .abCard()
+        .abSection("Story-Schutzzone (9:16)")
     }
 
     // MARK: - Delivery

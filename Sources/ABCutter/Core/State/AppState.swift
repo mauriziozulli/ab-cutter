@@ -28,6 +28,7 @@ final class AppState: ObservableObject {
     private var waveformTasks: [UUID: Task<Void, Never>] = [:]
     private var reloadTask: Task<Void, Never>?
     private var labelTask: Task<Void, Never>?
+    private var clipPreviewTask: Task<Void, Never>?
     private var foldTasks: [UUID: Task<Void, Never>] = [:]
     /// True while any channel fold is rendering.
     @Published private(set) var isFolding = false
@@ -389,13 +390,26 @@ final class AppState: ObservableObject {
         addClipAtPlayhead()
     }
 
-    func addClipAtPlayhead() {
+    /// A new clip starts from fresh defaults on purpose: independent settings
+    /// are the point of planning several different playouts in one project.
+    func addClipAtPlayhead(kind: ClipKind = .ab) {
         guard project.videoDurationSeconds > 0 else { return }
         let range = fittedRange(start: player.currentTime, length: project.defaultClipLengthSeconds)
-        let clip = Clip(name: "Clip \(project.clips.count + 1)", start: range.start, end: range.end)
+        let count = project.clips.filter { $0.kind == kind }.count + 1
+        let clip = Clip(
+            name: kind == .loop ? "Loop \(count)" : "Clip \(count)",
+            start: range.start,
+            end: range.end,
+            kind: kind
+        )
         project.clips.append(clip)
         selectedClipID = clip.id
-        player.apply(project: project, selectedClip: clip)
+        applyPlayerSettings()
+        inspectorTab = .clips
+    }
+
+    func addLoopClipAtPlayhead() {
+        addClipAtPlayhead(kind: .loop)
     }
 
     /// Snaps every clip to the house length, anchored on its existing in point.
@@ -431,13 +445,24 @@ final class AppState: ObservableObject {
         guard let index = project.clips.firstIndex(where: { $0.id == clip.id }) else { return }
         project.clips[index] = clip
         project.clampClips()
-        player.apply(project: project, selectedClip: selectedClip)
+        // While the clip preview is live, an edit rebuilds it; the timeline
+        // path would style the preview item with the wrong composition.
+        if player.isClipPreview {
+            reloadClipPreview()
+        } else {
+            player.apply(project: project, selectedClip: selectedClip)
+        }
     }
 
     func selectClip(_ clip: Clip) {
         selectedClipID = clip.id
-        player.seek(to: clip.start)
-        player.apply(project: project, selectedClip: clip)
+        inspectorTab = .clips
+        if player.isClipPreview {
+            reloadClipPreview()
+        } else {
+            player.seek(to: clip.start)
+            player.apply(project: project, selectedClip: clip)
+        }
         refreshPreviewLabels()
     }
 
@@ -590,11 +615,42 @@ final class AppState: ObservableObject {
     }
 
     func applyPlayerSettings() {
-        player.apply(project: project, selectedClip: selectedClip)
+        if player.isClipPreview {
+            reloadClipPreview()
+        } else {
+            player.apply(project: project, selectedClip: selectedClip)
+        }
         refreshPreviewLabels()
-        // A cover is cropped and laid out with the export settings too, so the
-        // safe area and the fit mode have to reach its preview as well.
+        // A cover is cropped and laid out with the clip's look too, so the
+        // accent and the fit mode have to reach its preview as well.
         refreshTitleCardPreview()
+    }
+
+    // MARK: - Clip preview
+
+    /// Plays the selected clip exactly as the export will build it — loop
+    /// passes, A/B mix and look included. The raw timeline cannot show a loop
+    /// at all, so this is the only honest preview a loop clip has.
+    func toggleClipPreview() {
+        if player.isClipPreview {
+            let snapshot = project
+            let clip = selectedClip
+            clipPreviewTask?.cancel()
+            clipPreviewTask = Task { [weak self] in
+                await self?.player.exitClipPreview(project: snapshot, selectedClip: clip)
+            }
+        } else {
+            reloadClipPreview()
+        }
+    }
+
+    func reloadClipPreview() {
+        guard let clip = selectedClip else { return }
+        let snapshot = project
+        clipPreviewTask?.cancel()
+        clipPreviewTask = Task { [weak self] in
+            await self?.player.loadClipPreview(project: snapshot, clip: clip)
+        }
     }
 
     /// Re-samples the burnt-in labels for the selected clip so the preview
@@ -603,7 +659,8 @@ final class AppState: ObservableObject {
     func refreshPreviewLabels() {
         labelTask?.cancel()
 
-        guard let format = player.previewFormat, let clip = selectedClip else {
+        let fallback: SocialFormat? = player.isClipPreview ? .portrait916 : nil
+        guard let format = player.previewFormat ?? fallback, let clip = selectedClip else {
             guard player.previewOverlays.before != nil || player.previewOverlays.after != nil else { return }
             player.previewOverlays = .empty
             player.apply(project: project, selectedClip: selectedClip)
@@ -743,7 +800,7 @@ final class AppState: ObservableObject {
                 frame: grabbedFrame,
                 format: format,
                 settings: project.stills,
-                export: project.export,
+                look: activeLook,
                 panX: selectedClip?.panX ?? 0,
                 panY: selectedClip?.panY ?? 0,
                 safeArea: project.export.safeArea(for: format),
@@ -759,12 +816,18 @@ final class AppState: ObservableObject {
             frame: frame,
             format: format,
             settings: project.stills,
-            export: project.export,
+            look: activeLook,
             panX: selectedClip?.panX ?? 0,
             panY: selectedClip?.panY ?? 0,
             safeArea: project.export.safeArea(for: format),
             scale: proxy
         )
+    }
+
+    /// The look the still cards are composed with: the selected clip's, or the
+    /// first clip's, or plain defaults when the project has no clips yet.
+    var activeLook: ClipLook {
+        selectedClip?.look ?? project.clips.first?.look ?? ClipLook()
     }
 
     /// Writes the full-resolution frame, a title card and an end card per
@@ -816,7 +879,7 @@ final class AppState: ObservableObject {
                        frame: frame,
                        format: format,
                        settings: settings,
-                       export: project.export,
+                       look: activeLook,
                        panX: selectedClip?.panX ?? 0,
                        panY: selectedClip?.panY ?? 0,
                        safeArea: safeArea
@@ -830,7 +893,7 @@ final class AppState: ObservableObject {
                        frame: grabbedFrame,
                        format: format,
                        settings: settings,
-                       export: project.export,
+                       look: activeLook,
                        panX: selectedClip?.panX ?? 0,
                        panY: selectedClip?.panY ?? 0,
                        safeArea: safeArea

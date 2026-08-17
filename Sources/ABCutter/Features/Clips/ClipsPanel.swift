@@ -12,6 +12,9 @@ struct ClipsPanel: View {
             clipList
             if let clip = state.selectedClip {
                 ClipInspector(state: state, clip: clip)
+                // The look lives on the clip, so it is edited right here —
+                // selecting a clip *is* opening its settings.
+                ClipLookPanel(state: state)
             } else {
                 Text("Einen Clip wählen, um ihn zu bearbeiten.")
                     .font(.caption)
@@ -32,10 +35,18 @@ struct ClipsPanel: View {
                     .foregroundStyle(.secondary)
             }
 
-            Button("\(String(format: "%g", state.project.defaultClipLengthSeconds))-s-Clip am Abspielkopf") {
-                state.addClipAtPlayhead()
+            HStack(spacing: 6) {
+                Button("Neuer A/B-Clip") { state.addClipAtPlayhead(kind: .ab) }
+                    .controlSize(.small)
+                    .tint(Theme.clipTint)
+                Button("Neuer Loop") { state.addClipAtPlayhead(kind: .loop) }
+                    .controlSize(.small)
+                    .tint(Theme.loopTint)
+                Spacer()
+                Text("\(String(format: "%g", state.project.defaultClipLengthSeconds)) s am Abspielkopf")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
-            .controlSize(.small)
             .disabled(!state.project.hasVideo)
         }
         .abSection("Clips")
@@ -56,8 +67,13 @@ struct ClipsPanel: View {
             .labelsHidden()
             .help("Beim Stapelexport berücksichtigen")
 
+            Circle()
+                .fill(Theme.tint(for: clip.kind))
+                .frame(width: 7, height: 7)
+                .help(clip.kind.title)
+
             VStack(alignment: .leading, spacing: 1) {
-                Text(clip.name)
+                Text(clip.kind == .loop ? "\u{21bb} \(clip.name)" : clip.name)
                     .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
                     .lineLimit(1)
                 Text("\(Timecode.clockString(fromSeconds: clip.start)) → \(Timecode.clockString(fromSeconds: clip.end))  ·  \(String(format: "%.1f s", clip.duration))")
@@ -78,7 +94,7 @@ struct ClipsPanel: View {
         .padding(6)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(isSelected ? Theme.clipTint.opacity(0.18) : Color.clear)
+                .fill(isSelected ? Theme.tint(for: clip.kind).opacity(0.18) : Color.clear)
         )
         .contentShape(Rectangle())
         .onTapGesture { state.selectClip(clip) }
@@ -189,6 +205,44 @@ struct ClipInspector: View {
             .textFieldStyle(.roundedBorder)
             .controlSize(.small)
 
+            Picker("Typ", selection: Binding(
+                get: { clip.kind },
+                set: { newValue in
+                    var updated = clip
+                    updated.kind = newValue
+                    state.updateClip(updated)
+                    state.refreshPreviewLabels()
+                }
+            )) {
+                ForEach(ClipKind.allCases) { kind in
+                    Text(kind.title).tag(kind)
+                }
+            }
+            .pickerStyle(.segmented)
+            .controlSize(.small)
+
+            Text(clip.kind.note)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            if clip.kind == .loop {
+                Stepper(
+                    value: Binding(
+                        get: { clip.loopPasses },
+                        set: { newValue in
+                            var updated = clip
+                            updated.loopPasses = min(max(newValue, 1), 4)
+                            state.updateClip(updated)
+                        }
+                    ),
+                    in: 1...4
+                ) {
+                    Text("B-Durchläufe: \(min(max(clip.loopPasses, 1), 4)) — Datei wird \(String(format: "%.0f", clip.duration * Double(1 + min(max(clip.loopPasses, 1), 4)))) s")
+                        .font(.caption)
+                }
+                .controlSize(.small)
+            }
+
             timeRow(
                 label: "In",
                 seconds: clip.start,
@@ -212,12 +266,14 @@ struct ClipInspector: View {
             )
 
             lengthRow
-            switchRows
+            if clip.kind == .ab {
+                switchRows
+            }
 
             Divider()
 
             abRow(
-                title: "A (vorher)",
+                title: clip.kind == .loop ? "A (1. Durchlauf)" : "A (vorher)",
                 tint: Theme.beforeTint,
                 selection: Binding(
                     get: { clip.beforeSourceID },
@@ -231,7 +287,7 @@ struct ClipInspector: View {
             )
 
             abRow(
-                title: "B (nachher)",
+                title: clip.kind == .loop ? "B (Loop)" : "B (nachher)",
                 tint: Theme.afterTint,
                 selection: Binding(
                     get: { clip.afterSourceID },

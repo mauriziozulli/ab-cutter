@@ -33,6 +33,10 @@ final class PlayerController: ObservableObject {
     /// `AppState` so the preview shows what the export will.
     var previewOverlays = ClipOverlays.empty
 
+    /// True while the player is showing one clip exactly as the export builds
+    /// it — loop passes and A/B mix included — instead of the raw timeline.
+    @Published private(set) var isClipPreview = false
+
     private var timeline: TimelineComposition?
     private var timeObserver: Any?
     private var playbackLimit: ClosedRange<Double>?
@@ -54,6 +58,7 @@ final class PlayerController: ObservableObject {
     /// Rebuilds the composition. Call after the video, an audio source or a
     /// sync offset changes.
     func reload(project: ABProject, selectedClip: Clip?) async {
+        isClipPreview = false
         guard project.hasVideo else {
             player.replaceCurrentItem(with: nil)
             timeline = nil
@@ -94,6 +99,9 @@ final class PlayerController: ObservableObject {
 
     /// Applies monitoring, framing and grade without rebuilding the tracks.
     func apply(project: ABProject, selectedClip: Clip?) {
+        // The clip preview carries its own composition and mix; styling it
+        // with the timeline's would silently show the wrong thing.
+        guard !isClipPreview else { return }
         guard let timeline, let item = player.currentItem else { return }
 
         item.audioMix = makeAudioMix(project: project, clip: selectedClip, timeline: timeline)
@@ -115,6 +123,87 @@ final class PlayerController: ObservableObject {
             guard wasPlaying, let self else { return }
             self.player.play()
         }
+    }
+
+    // MARK: - Clip preview
+
+    /// Plays the selected clip exactly as it will be exported: the clip
+    /// composition, its audio mix, and its own look — for a loop clip that
+    /// includes both passes, which the raw timeline cannot show at all.
+    /// Cards are left out; they belong to the delivery, not to the cut.
+    func loadClipPreview(project: ABProject, clip: Clip) async {
+        guard project.hasVideo else { return }
+
+        buildToken += 1
+        let token = buildToken
+        isPreparing = true
+        errorMessage = nil
+
+        do {
+            let built = try await CompositionBuilder.buildClip(project: project, clip: clip)
+            guard token == buildToken else { return }
+
+            let look = clip.look
+            let format = previewFormat ?? .portrait916
+            let plan = RenderPlan(
+                targetSize: format.size,
+                fitMode: look.fitMode,
+                panX: clip.panX,
+                panY: clip.panY,
+                switchTimes: built.switchTimes,
+                beforeLook: look.beforeLook,
+                afterLook: look.afterLook,
+                frameTreatment: look.frameTreatment,
+                frameBackdrop: look.frameBackdrop,
+                insetScale: look.insetScale,
+                labelPosition: look.labelPosition,
+                safeArea: project.export.safeArea(for: format),
+                showStrips: look.showStrips,
+                grainStrength: look.grainStrength,
+                vignetteStrength: look.vignetteStrength,
+                beforeOverlay: previewOverlays.before,
+                afterOverlay: previewOverlays.after,
+                pictureRange: built.pictureRange,
+                sourceNaturalSize: built.videoNaturalSize,
+                sourcePreferredTransform: built.videoPreferredTransform
+            )
+
+            let item = AVPlayerItem(asset: built.composition)
+            item.audioMix = built.audioMix
+            let videoComposition = AVMutableVideoComposition(asset: built.composition) { filterRequest in
+                let output = FrameRenderer.render(
+                    filterRequest.sourceImage,
+                    at: filterRequest.compositionTime,
+                    plan: plan
+                )
+                filterRequest.finish(with: output, context: nil)
+            }
+            videoComposition.renderSize = format.size
+            videoComposition.frameDuration = built.frameDuration
+            item.videoComposition = videoComposition
+
+            // The clip preview has its own short timeline; the project's
+            // playhead limit would stop it a frame in.
+            playbackLimit = nil
+            isClipPreview = true
+            player.replaceCurrentItem(with: item)
+            duration = CMTimeGetSeconds(built.duration)
+            seek(to: 0)
+        } catch {
+            guard token == buildToken else { return }
+            errorMessage = error.localizedDescription
+        }
+
+        if token == buildToken {
+            isPreparing = false
+        }
+    }
+
+    /// Back to the project timeline.
+    func exitClipPreview(project: ABProject, selectedClip: Clip?) async {
+        guard isClipPreview else { return }
+        isClipPreview = false
+        await reload(project: project, selectedClip: selectedClip)
     }
 
     // MARK: - Mixing
@@ -157,7 +246,7 @@ final class PlayerController: ObservableObject {
                 CMTime(seconds: $0, preferredTimescale: 90_000)
             }
             let fade = CMTime(
-                seconds: max(project.export.audioCrossfadeMilliseconds, 0) / 1000.0,
+                seconds: max((clip?.look.audioCrossfadeMilliseconds ?? 40), 0) / 1000.0,
                 preferredTimescale: 90_000
             )
 
@@ -198,25 +287,27 @@ final class PlayerController: ObservableObject {
         guard let previewFormat else { return nil }
 
         // The preview runs on the whole timeline, so the split is absolute
-        // project time rather than clip-relative.
+        // project time rather than clip-relative. The look belongs to the
+        // selected clip; without one the film runs plain and full bleed.
+        let look = clip?.look ?? ClipLook()
         let plan = RenderPlan(
             targetSize: previewFormat.size,
-            fitMode: project.export.fitMode,
+            fitMode: look.fitMode,
             panX: clip?.panX ?? 0,
             panY: clip?.panY ?? 0,
             switchTimes: (clip?.switches ?? []).map {
                 CMTime(seconds: $0, preferredTimescale: 90_000)
             },
-            beforeLook: clip == nil ? project.export.afterLook : project.export.beforeLook,
-            afterLook: project.export.afterLook,
-            frameTreatment: clip == nil ? .fullBleed : project.export.frameTreatment,
-            frameBackdrop: project.export.frameBackdrop,
-            insetScale: project.export.insetScale,
-            labelPosition: project.export.labelPosition,
+            beforeLook: clip == nil ? look.afterLook : look.beforeLook,
+            afterLook: look.afterLook,
+            frameTreatment: clip == nil ? .fullBleed : look.frameTreatment,
+            frameBackdrop: look.frameBackdrop,
+            insetScale: look.insetScale,
+            labelPosition: look.labelPosition,
             safeArea: project.export.safeArea(for: previewFormat),
-            showStrips: project.export.showStrips,
-            grainStrength: project.export.grainStrength,
-            vignetteStrength: project.export.vignetteStrength,
+            showStrips: clip == nil ? false : look.showStrips,
+            grainStrength: clip == nil ? 0 : look.grainStrength,
+            vignetteStrength: clip == nil ? 0 : look.vignetteStrength,
             beforeOverlay: previewOverlays.before,
             afterOverlay: previewOverlays.after,
             sourceNaturalSize: timeline.videoNaturalSize,

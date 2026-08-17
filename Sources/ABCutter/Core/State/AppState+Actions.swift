@@ -7,7 +7,6 @@ import SwiftUI
 /// out of settings that are consulted at four different moments.
 enum InspectorTab: String, CaseIterable, Identifiable {
     case clips
-    case look
     case cover
     case export
 
@@ -16,7 +15,6 @@ enum InspectorTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .clips: "Clips"
-        case .look: "Look"
         case .cover: "Titelbild"
         case .export: "Export"
         }
@@ -25,7 +23,6 @@ enum InspectorTab: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .clips: "scissors"
-        case .look: "paintpalette"
         case .cover: "photo"
         case .export: "square.and.arrow.up"
         }
@@ -44,6 +41,22 @@ extension AppState {
             set: { newValue in
                 self.project.export[keyPath: keyPath] = newValue
                 self.applyPlayerSettings()
+            }
+        )
+    }
+
+    /// Writes into the *selected clip's* look and re-applies the preview.
+    /// Reading with no clip selected returns defaults; writing then is a
+    /// no-op, and the panel disables itself before it comes to that.
+    func lookBinding<Value>(_ keyPath: WritableKeyPath<ClipLook, Value>) -> Binding<Value> {
+        Binding(
+            get: { (self.selectedClip?.look ?? ClipLook())[keyPath: keyPath] },
+            set: { newValue in
+                guard var clip = self.selectedClip else { return }
+                clip.look[keyPath: keyPath] = newValue
+                self.updateClip(clip)
+                self.refreshPreviewLabels()
+                self.refreshTitleCardPreview()
             }
         )
     }

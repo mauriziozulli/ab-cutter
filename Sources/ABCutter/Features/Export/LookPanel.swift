@@ -1,20 +1,17 @@
 import SwiftUI
 
-/// Everything about how a clip *looks*: how the picture is framed on each side
-/// of the switch, the grade, and the burnt-in type.
-///
-/// Split out of the export panel because these are decided once for a project
-/// and then left alone, whereas formats and the output folder are touched on
-/// every run.
+/// Everything about how the *selected clip* looks: colour, framing, grade,
+/// type and texture. Embedded under the clip inspector, because since 0.12
+/// the look belongs to the clip — one project can plan an ochre framed A/B
+/// and a verdigris full-bleed loop side by side.
 @MainActor
-struct LookPanel: View {
+struct ClipLookPanel: View {
     @ObservedObject var state: AppState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             houseSection
             frameSection
-            safeAreaSection
             gradeSection
             labelSection
         }
@@ -22,31 +19,28 @@ struct LookPanel: View {
 
     // MARK: - House style
 
-    /// The Sound Matters system: which of the family carries the project, the
-    /// two mono strips, and the texture that turns a flat crop into something
-    /// that reads as a recording.
     private var houseSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("Farbe", selection: state.exportBinding(\.accent)) {
+            Picker("Farbe", selection: state.lookBinding(\.accent)) {
                 ForEach(BrandAccent.allCases) { accent in
                     Text(accent.title).tag(accent)
                 }
             }
             .controlSize(.small)
-            .help(state.project.export.accent.note)
+            .help((state.selectedClip?.look.accent ?? .ocker).note)
 
-            Toggle("Zeilen oben und unten", isOn: state.exportBinding(\.showStrips))
+            Toggle("Zeilen oben und unten", isOn: state.lookBinding(\.showStrips))
                 .toggleStyle(.checkbox)
                 .help("Mono-Zeile mit harter Linie an beiden Enden — der Rahmen des Aufklebers, aufgeklappt")
 
-            if state.project.export.showStrips {
-                TextField("Oben links — leer nimmt den Filmnamen", text: state.exportBinding(\.stripLeft))
+            if state.selectedClip?.look.showStrips == true {
+                TextField("Oben links — leer nimmt den Filmnamen", text: state.lookBinding(\.stripLeft))
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
-                TextField("Unten links", text: state.exportBinding(\.stripNote))
+                TextField("Unten links", text: state.lookBinding(\.stripNote))
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
-                TextField("Unten rechts — Adresse", text: state.exportBinding(\.stripAddress))
+                TextField("Unten rechts — Adresse", text: state.lookBinding(\.stripAddress))
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
 
@@ -57,15 +51,15 @@ struct LookPanel: View {
 
             labelledSlider(
                 "Korn",
-                value: state.exportBinding(\.grainStrength),
+                value: state.lookBinding(\.grainStrength),
                 range: 0...0.6,
-                readout: "\(Int(state.project.export.grainStrength * 100)) %"
+                readout: "\(Int((state.selectedClip?.look.grainStrength ?? 0) * 100)) %"
             )
             labelledSlider(
                 "Schleier",
-                value: state.exportBinding(\.vignetteStrength),
+                value: state.lookBinding(\.vignetteStrength),
                 range: 0...0.9,
-                readout: "\(Int(state.project.export.vignetteStrength * 100)) %"
+                readout: "\(Int((state.selectedClip?.look.vignetteStrength ?? 0) * 100)) %"
             )
 
             if !Typography.housefacesAvailable {
@@ -85,37 +79,37 @@ struct LookPanel: View {
 
     private var frameSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("Rahmen", selection: state.exportBinding(\.frameTreatment)) {
+            Picker("Rahmen", selection: state.lookBinding(\.frameTreatment)) {
                 ForEach(FrameTreatment.allCases) { treatment in
                     Text(treatment.title).tag(treatment)
                 }
             }
             .controlSize(.small)
 
-            Text(state.project.export.frameTreatment.note)
+            Text((state.selectedClip?.look.frameTreatment ?? .insetBoth).note)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
-            if state.project.export.frameTreatment != .fullBleed {
+            if state.selectedClip?.look.frameTreatment != .fullBleed {
                 labelledSlider(
                     "Grösse",
-                    value: state.exportBinding(\.insetScale),
+                    value: state.lookBinding(\.insetScale),
                     range: 0.6...0.98,
-                    readout: "\(Int(state.project.export.insetScale * 100)) %"
+                    readout: "\(Int((state.selectedClip?.look.insetScale ?? 0.86) * 100)) %"
                 )
 
-                Picker("Umgebung", selection: state.exportBinding(\.frameBackdrop)) {
+                Picker("Umgebung", selection: state.lookBinding(\.frameBackdrop)) {
                     ForEach(FrameBackdrop.allCases) { backdrop in
                         Text(backdrop.title).tag(backdrop)
                     }
                 }
                 .controlSize(.small)
 
-                Toggle("Feine Rahmenlinie", isOn: state.exportBinding(\.showFrameBorder))
+                Toggle("Feine Rahmenlinie", isOn: state.lookBinding(\.showFrameBorder))
                     .toggleStyle(.checkbox)
             }
 
-            Picker("Einpassen", selection: state.exportBinding(\.fitMode)) {
+            Picker("Einpassen", selection: state.lookBinding(\.fitMode)) {
                 ForEach(FitMode.allCases) { mode in
                     Text(mode.title).tag(mode)
                 }
@@ -126,57 +120,18 @@ struct LookPanel: View {
         .abSection("Rahmen")
     }
 
-    // MARK: - Story safe area
-
-    private var safeAreaSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Toggle("Bedienelemente freihalten", isOn: state.exportBinding(\.respectPlayerChrome))
-                .toggleStyle(.checkbox)
-                .help("Hält Rahmen und Text aus den Streifen heraus, in die Instagram Kontoname und Antwortfeld zeichnet")
-
-            if state.project.export.respectPlayerChrome {
-                labelledSlider(
-                    "Oben",
-                    value: state.exportBinding(\.chromeSafeTop),
-                    range: 0...SafeArea.maximum,
-                    readout: "\(Int(state.project.export.chromeSafeTop * 100)) %"
-                )
-                labelledSlider(
-                    "Unten",
-                    value: state.exportBinding(\.chromeSafeBottom),
-                    range: 0...SafeArea.maximum,
-                    readout: "\(Int(state.project.export.chromeSafeBottom * 100)) %"
-                )
-
-                Text(hint)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .abCard()
-        .abSection("Story-Schutzzone (9:16)")
-    }
-
-    /// The reserved strips only exist on 9:16, so say so rather than leaving
-    /// two sliders that appear to do nothing.
-    private var hint: String {
-        state.project.export.formats.contains(where: \.hasPlayerChrome)
-            ? "Gilt nur für 9:16 — ein Beitrag im Feed hat keine Bedienelemente über dem Bild. Im Vorschauformat 9:16 markieren gestrichelte Linien die Streifen; exportiert werden sie nie."
-            : "Gilt nur für 9:16. Dieses Format ist gerade nicht ausgewählt."
-    }
-
     // MARK: - Grade
 
     private var gradeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("A (vorher)", selection: state.exportBinding(\.beforeLook)) {
+            Picker("A (vorher)", selection: state.lookBinding(\.beforeLook)) {
                 ForEach(LookStyle.allCases) { look in
                     Text(look.title).tag(look)
                 }
             }
             .controlSize(.small)
 
-            Picker("B (nachher)", selection: state.exportBinding(\.afterLook)) {
+            Picker("B (nachher)", selection: state.lookBinding(\.afterLook)) {
                 ForEach(LookStyle.allCases) { look in
                     Text(look.title).tag(look)
                 }
@@ -185,9 +140,9 @@ struct LookPanel: View {
 
             labelledSlider(
                 "Überblende",
-                value: state.exportBinding(\.audioCrossfadeMilliseconds),
+                value: state.lookBinding(\.audioCrossfadeMilliseconds),
                 range: 0...500,
-                readout: "\(Int(state.project.export.audioCrossfadeMilliseconds)) ms"
+                readout: "\(Int(state.selectedClip?.look.audioCrossfadeMilliseconds ?? 40)) ms"
             )
         }
         .abCard()
@@ -198,51 +153,45 @@ struct LookPanel: View {
 
     private var labelSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Toggle("Text einbrennen", isOn: state.exportBinding(\.showLabels))
+            Toggle("Text einbrennen", isOn: state.lookBinding(\.showLabels))
                 .toggleStyle(.checkbox)
 
-            if state.project.export.showLabels {
+            if state.selectedClip?.look.showLabels == true {
                 HStack(spacing: 6) {
-                    TextField("A-Text", text: state.exportBinding(\.beforeLabel))
+                    TextField("A-Text", text: state.lookBinding(\.beforeLabel))
                         .textFieldStyle(.roundedBorder)
                         .controlSize(.small)
-                    TextField("B-Text", text: state.exportBinding(\.afterLabel))
+                    TextField("B-Text", text: state.lookBinding(\.afterLabel))
                         .textFieldStyle(.roundedBorder)
                         .controlSize(.small)
                 }
 
-                TextField("Zweite Zeile — Titel, Regie, Credits", text: state.exportBinding(\.subtitleText))
+                TextField("Zweite Zeile — Titel, Regie, Credits", text: state.lookBinding(\.subtitleText))
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
 
-                Picker("Stil", selection: state.exportBinding(\.labelStyle)) {
+                Picker("Stil", selection: state.lookBinding(\.labelStyle)) {
                     ForEach(LabelStyle.allCases) { style in
                         Text(style.title).tag(style)
                     }
                 }
                 .controlSize(.small)
 
-                Picker("Position", selection: state.exportBinding(\.labelPosition)) {
+                Picker("Position", selection: state.lookBinding(\.labelPosition)) {
                     ForEach(LabelPosition.allCases) { position in
                         Text(position.title).tag(position)
                     }
                 }
                 .controlSize(.small)
 
-                if state.project.export.labelStyle == .tinted {
-                    Picker("Schatten", selection: state.exportBinding(\.labelShadow)) {
-                        ForEach(LabelShadowMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
-                        }
+                Picker("Schatten", selection: state.lookBinding(\.labelShadow)) {
+                    ForEach(LabelShadowMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
                     }
-                    .pickerStyle(.segmented)
-                    .controlSize(.small)
-                    .help("Automatisch setzt einen weichen Schatten nur dort, wo die Farbe gegen das Bild nicht lesbar wäre")
-
-                    Text("Die Farbe wird aus dem Farbbild gelesen — auch eine Schwarzweiss-Hälfte behält so farbigen Text.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
                 }
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+                .help("Automatisch setzt einen weichen Schatten überall dort, wo Schrift direkt auf dem Bild landet")
             }
         }
         .abCard()

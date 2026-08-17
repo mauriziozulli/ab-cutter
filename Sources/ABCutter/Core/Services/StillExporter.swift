@@ -53,7 +53,7 @@ enum StillExporter {
         frame: CGImage,
         format: SocialFormat,
         settings: StillSettings,
-        export: ExportSettings,
+        look: ClipLook,
         panX: Double,
         panY: Double,
         safeArea: SafeArea = .none,
@@ -62,10 +62,10 @@ enum StillExporter {
         guard let canvas = canvasSize(format: format, scale: scale) else { return nil }
         let target = CGRect(origin: .zero, size: canvas)
         let context = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
-        let house = export.labelStyle.isHouse
+        let house = look.labelStyle.isHouse
 
         var background = place(
-            CIImage(cgImage: frame), into: target, mode: export.fitMode, panX: panX, panY: panY
+            CIImage(cgImage: frame), into: target, mode: look.fitMode, panX: panX, panY: panY
         )
         background = soften(background, target: target, strength: settings.blurStrength)
         background = dim(background, target: target, amount: settings.dimStrength)
@@ -83,7 +83,7 @@ enum StillExporter {
             targetSize: canvas,
             headline: settings.headline,
             subline: settings.subline,
-            accent: export.accent.colour,
+            accent: look.accent.colour,
             house: house,
             tint: tint,
             position: settings.textPosition,
@@ -103,7 +103,7 @@ enum StillExporter {
         frame: CGImage?,
         format: SocialFormat,
         settings: StillSettings,
-        export: ExportSettings,
+        look: ClipLook,
         panX: Double,
         panY: Double,
         safeArea: SafeArea = .none,
@@ -116,7 +116,7 @@ enum StillExporter {
         var background = CIImage(color: Brand.tinte.ciColor).cropped(to: target)
         if settings.endGround == .frame, let frame {
             var picture = place(
-                CIImage(cgImage: frame), into: target, mode: export.fitMode, panX: panX, panY: panY
+                CIImage(cgImage: frame), into: target, mode: look.fitMode, panX: panX, panY: panY
             )
             picture = soften(picture, target: target, strength: max(settings.blurStrength, 55))
             // Darker than a title card: here the wordmark has to win outright.
@@ -130,7 +130,7 @@ enum StillExporter {
             wordmarkBar: settings.endWordmarkBar,
             address: settings.endAddress,
             note: settings.endNote,
-            accent: export.accent.colour,
+            accent: look.accent.colour,
             safeArea: safeArea
         ) else { return nil }
 

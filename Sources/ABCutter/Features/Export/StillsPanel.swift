@@ -84,7 +84,7 @@ struct StillsPanel: View {
                 range: 0...0.8,
                 readout: "\(Int(state.project.stills.dimStrength * 100)) %"
             )
-            Text(state.project.export.labelStyle.isHouse
+            Text(state.activeLook.labelStyle.isHouse
                  ? "Das Weichzeichnen schafft den Platz für den Text. Die Farben kommen im Haus-Stil aus der Palette, nicht aus dem Bild."
                  : "Das Weichzeichnen schafft erst den Platz für den Text — die Farbe wird danach aus dem unscharfen Hintergrund gelesen, nicht aus dem Rohbild.")
                 .font(.caption2)

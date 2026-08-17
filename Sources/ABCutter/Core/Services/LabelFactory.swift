@@ -28,23 +28,23 @@ enum LabelFactory {
         format: SocialFormat,
         guides: Bool = false
     ) async -> ClipOverlays {
-        let settings = project.export
-        let safeArea = settings.safeArea(for: format)
+        let look = clip.look
+        let safeArea = project.export.safeArea(for: format)
         let showsGuides = guides && !safeArea.isEmpty
 
-        let insetsAnything = settings.frameTreatment.isInset(before: true)
-            || settings.frameTreatment.isInset(before: false)
+        let insetsAnything = look.frameTreatment.isInset(before: true)
+            || look.frameTreatment.isInset(before: false)
         let strips = stripText(project: project, clip: clip)
-        let anyStrip = settings.showStrips && strips.hasAny
+        let anyStrip = look.showStrips && strips.hasAny
 
         // Nothing to draw at all when the labels and strips are off and the
         // picture is full bleed on both sides.
-        guard settings.showLabels || anyStrip || showsGuides
-            || (settings.showFrameBorder && insetsAnything) else { return .empty }
+        guard look.showLabels || anyStrip || showsGuides
+            || (look.showFrameBorder && insetsAnything) else { return .empty }
 
         // The house styles take their colour from the palette, so the two
         // frame decodes the sampler needs are skipped entirely.
-        let tints = settings.labelStyle.isHouse
+        let tints = look.labelStyle.isHouse
             ? (before: LabelTint.white, after: LabelTint.white)
             : await self.tints(project: project, clip: clip, format: format)
 
@@ -54,24 +54,24 @@ enum LabelFactory {
                     targetSize: format.size,
                     layout: FrameRenderer.layout(
                         targetSize: format.size,
-                        treatment: settings.frameTreatment,
+                        treatment: look.frameTreatment,
                         isBefore: isBefore,
-                        insetScale: settings.insetScale,
-                        labelPosition: settings.labelPosition,
+                        insetScale: look.insetScale,
+                        labelPosition: look.labelPosition,
                         safeArea: safeArea,
                         showStrips: anyStrip
                     ),
-                    accent: settings.accent.colour,
-                    style: settings.labelStyle,
+                    accent: look.accent.colour,
+                    style: look.labelStyle,
                     tint: tint,
                     isBefore: isBefore,
-                    showBorder: settings.showFrameBorder,
-                    title: settings.showLabels
-                        ? (isBefore ? settings.beforeLabel : settings.afterLabel)
+                    showBorder: look.showFrameBorder,
+                    title: look.showLabels
+                        ? (isBefore ? look.beforeLabel : look.afterLabel)
                         : "",
-                    subtitle: settings.showLabels ? settings.subtitleText : "",
-                    position: settings.labelPosition,
-                    shadow: wantsShadow(tint, mode: settings.labelShadow, style: settings.labelStyle),
+                    subtitle: look.showLabels ? look.subtitleText : "",
+                    position: look.labelPosition,
+                    shadow: wantsShadow(tint, mode: look.labelShadow, style: look.labelStyle),
                     stripTopLeft: anyStrip ? strips.title : "",
                     stripTopRight: anyStrip ? (isBefore ? strips.beforeSource : strips.afterSource) : "",
                     stripBottomLeft: anyStrip ? strips.note : "",
@@ -105,14 +105,14 @@ enum LabelFactory {
     }
 
     static func stripText(project: ABProject, clip: Clip) -> StripText {
-        let settings = project.export
-        let given = settings.stripLeft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let look = clip.look
+        let given = look.stripLeft.trimmingCharacters(in: .whitespacesAndNewlines)
         return StripText(
             title: given.isEmpty ? project.name : given,
             beforeSource: project.beforeSource(for: clip)?.name ?? "",
             afterSource: project.afterSource(for: clip)?.name ?? "",
-            note: settings.stripNote.trimmingCharacters(in: .whitespacesAndNewlines),
-            address: settings.stripAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+            note: look.stripNote.trimmingCharacters(in: .whitespacesAndNewlines),
+            address: look.stripAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
 
@@ -123,21 +123,29 @@ enum LabelFactory {
         clip: Clip,
         format: SocialFormat
     ) async -> (before: LabelTint, after: LabelTint) {
-        let settings = project.export
-        guard settings.labelStyle == .tinted, let url = project.videoURL else {
+        guard clip.look.labelStyle == .tinted, let url = project.videoURL else {
             return (.white, .white)
         }
 
         // The middle of each half is representative of the stretch that label
-        // is actually on screen for.
-        let beforeTime = CMTime(seconds: (clip.start + clip.splitTime) / 2, preferredTimescale: 600)
-        let afterTime = CMTime(seconds: (clip.splitTime + clip.end) / 2, preferredTimescale: 600)
+        // is actually on screen for. A loop shows the same picture on both
+        // sides, so both samples read the same midpoint.
+        let middle = clip.start + clip.duration / 2
+        let beforeTime = CMTime(
+            seconds: clip.kind == .loop ? middle : (clip.start + clip.splitTime) / 2,
+            preferredTimescale: 600
+        )
+        let afterTime = CMTime(
+            seconds: clip.kind == .loop ? middle : (clip.splitTime + clip.end) / 2,
+            preferredTimescale: 600
+        )
 
         async let beforeSample = PaletteSampler.tint(
             videoURL: url,
             at: beforeTime,
             format: format,
-            settings: settings,
+            look: clip.look,
+            safeArea: project.export.safeArea(for: format),
             clip: clip,
             isBefore: true
         )
@@ -145,7 +153,8 @@ enum LabelFactory {
             videoURL: url,
             at: afterTime,
             format: format,
-            settings: settings,
+            look: clip.look,
+            safeArea: project.export.safeArea(for: format),
             clip: clip,
             isBefore: false
         )

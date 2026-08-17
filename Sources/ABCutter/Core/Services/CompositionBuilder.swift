@@ -154,9 +154,23 @@ enum CompositionBuilder {
             )
         }
 
+        // A loop clip's picture is the selection played once per pass — the
+        // repetition is the point, so it lives on the video track rather than
+        // in a player setting anyone could miss.
+        let passes = clip.kind == .loop ? 1 + min(max(clip.loopPasses, 1), 4) : 1
+
         let pictureStart = videoTrack.timeRange.duration
-        try videoTrack.insertTimeRange(clipRange, of: sourceVideo, at: pictureStart)
-        let pictureRange = CMTimeRange(start: pictureStart, duration: clipRange.duration)
+        for pass in 0..<passes {
+            let at = CMTimeAdd(
+                pictureStart,
+                CMTimeMultiply(clipRange.duration, multiplier: Int32(pass))
+            )
+            try videoTrack.insertTimeRange(clipRange, of: sourceVideo, at: at)
+        }
+        let pictureRange = CMTimeRange(
+            start: pictureStart,
+            duration: CMTimeMultiply(clipRange.duration, multiplier: Int32(passes))
+        )
 
         if CMTimeCompare(tailHold, .zero) > 0 {
             let seed = seedRange(endingAt: clipRange.end, within: clipRange)
@@ -167,19 +181,72 @@ enum CompositionBuilder {
             )
         }
 
-        // Switches are stored in project time; inside the composition they are
-        // relative to the clip and then pushed past the title card's hold.
-        let switchTimes = clip.switches.map {
-            CMTimeAdd(CMTimeSubtract(time($0), clipStart), pictureStart)
+        // Switches for an A/B are stored in project time; inside the
+        // composition they are relative to the clip and pushed past the title
+        // card's hold. A loop has exactly one switch — the seam between the
+        // first pass and the repeats.
+        let switchTimes: [CMTime]
+        switch clip.kind {
+        case .ab:
+            switchTimes = clip.switches.map {
+                CMTimeAdd(CMTimeSubtract(time($0), clipStart), pictureStart)
+            }
+        case .loop:
+            switchTimes = [CMTimeAdd(pictureStart, clipRange.duration)]
         }
 
         let beforeSource = project.beforeSource(for: clip)
         let afterSource = project.afterSource(for: clip)
         let usesSameSource = beforeSource?.id == afterSource?.id
+        let fade = time(max(clip.look.audioCrossfadeMilliseconds, 0) / 1000.0)
 
         var parameters: [AVMutableAudioMixInputParameters] = []
 
-        if usesSameSource {
+        if clip.kind == .loop {
+            // Pass 1 carries the A source, every further pass the B source.
+            // Each placement's media ends at its own seam, so no side ever
+            // bleeds into the other — the ramps only soften the cut edges.
+            if let source = beforeSource,
+               let track = try await placeAudio(
+                   source: source,
+                   videoAsset: videoAsset,
+                   into: composition,
+                   window: clipRange,
+                   shift: pictureStart
+               ) {
+                parameters.append(edgeParameters(
+                    track: track,
+                    gain: linearGain(source.gainDB),
+                    from: pictureStart,
+                    to: CMTimeAdd(pictureStart, clipRange.duration),
+                    fade: fade
+                ))
+            }
+            let loopSource = afterSource ?? beforeSource
+            if let source = loopSource {
+                for pass in 1..<passes {
+                    let passStart = CMTimeAdd(
+                        pictureStart,
+                        CMTimeMultiply(clipRange.duration, multiplier: Int32(pass))
+                    )
+                    if let track = try await placeAudio(
+                        source: source,
+                        videoAsset: videoAsset,
+                        into: composition,
+                        window: clipRange,
+                        shift: passStart
+                    ) {
+                        parameters.append(edgeParameters(
+                            track: track,
+                            gain: linearGain(source.gainDB),
+                            from: passStart,
+                            to: CMTimeAdd(passStart, clipRange.duration),
+                            fade: fade
+                        ))
+                    }
+                }
+            }
+        } else if usesSameSource {
             if let source = beforeSource,
                let track = try await placeAudio(
                    source: source,
@@ -193,8 +260,6 @@ enum CompositionBuilder {
                 parameters.append(params)
             }
         } else {
-            let fade = time(max(project.export.audioCrossfadeMilliseconds, 0) / 1000.0)
-
             if let source = beforeSource,
                let track = try await placeAudio(
                    source: source,
@@ -251,6 +316,34 @@ enum CompositionBuilder {
             videoPreferredTransform: try await sourceVideo.load(.preferredTransform),
             frameDuration: try await frameDuration(of: sourceVideo)
         )
+    }
+
+    /// A short ramp in at `from` and out at `to`, so every seam of a looped
+    /// placement lands without a click. The media itself already ends at the
+    /// seam; these only soften its edges.
+    static func edgeParameters(
+        track: AVAssetTrack,
+        gain: Float,
+        from: CMTime,
+        to: CMTime,
+        fade: CMTime
+    ) -> AVMutableAudioMixInputParameters {
+        let params = AVMutableAudioMixInputParameters(track: track)
+        guard CMTimeCompare(fade, .zero) > 0 else {
+            params.setVolume(gain, at: .zero)
+            return params
+        }
+        let half = CMTimeMultiplyByFloat64(fade, multiplier: 0.5)
+        params.setVolume(0, at: .zero)
+        params.setVolumeRamp(
+            fromStartVolume: 0, toEndVolume: gain,
+            timeRange: CMTimeRange(start: from, duration: half)
+        )
+        params.setVolumeRamp(
+            fromStartVolume: gain, toEndVolume: 0,
+            timeRange: CMTimeRange(start: CMTimeSubtract(to, half), duration: half)
+        )
+        return params
     }
 
     /// Volume automation for one side of the A/B across any number of

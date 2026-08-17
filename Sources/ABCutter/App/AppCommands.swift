@@ -45,9 +45,20 @@ struct AppCommands: Commands {
         }
 
         CommandMenu("Clip") {
-            Button("Neuer Clip am Abspielkopf") { state.addClipAtPlayhead() }
+            Button("Neuer A/B-Clip am Abspielkopf") { state.addClipAtPlayhead(kind: .ab) }
                 .keyboardShortcut("n", modifiers: .command)
                 .disabled(!state.project.hasVideo)
+            Button("Neuer Loop-Clip am Abspielkopf") { state.addClipAtPlayhead(kind: .loop) }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .disabled(!state.project.hasVideo)
+
+            Divider()
+
+            Button(state.player.isClipPreview ? "Clip-Vorschau verlassen" : "Clip-Vorschau") {
+                state.toggleClipPreview()
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .disabled(!state.hasSelectedClip)
 
             Divider()
 

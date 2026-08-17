@@ -13,7 +13,15 @@ enum Theme {
     static let beforeTint = Color(red: 0.62, green: 0.64, blue: 0.68)
     static let afterTint = Color(red: 0.20, green: 0.62, blue: 0.94)
 
-    static let clipTint = Color(red: 0.98, green: 0.72, blue: 0.24)
+    /// One identity colour per clip kind, both taken from the brand family:
+    /// ochre for an A/B, dust blue for a loop. The timeline, the clip list
+    /// and the inspector all read these, so a glance tells the kinds apart.
+    static let clipTint = Color(red: 0.85, green: 0.59, blue: 0.17)      // Ocker
+    static let loopTint = Color(red: 0.43, green: 0.58, blue: 0.65)      // Staubblau
+
+    static func tint(for kind: ClipKind) -> Color {
+        kind == .loop ? loopTint : clipTint
+    }
 
     static let cornerRadius: CGFloat = 8
     static let rowSpacing: CGFloat = 8

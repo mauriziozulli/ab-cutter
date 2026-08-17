@@ -114,15 +114,55 @@ struct AudioSource: Identifiable, Codable, Hashable {
 
 // MARK: - Clips
 
+/// What a clip does with its two audio sides.
+enum ClipKind: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// Flips between the A and B source at each switch point — the picture
+    /// runs on, only the sound changes.
+    case ab
+    /// Plays the selection once on the A side, then the *same* selection
+    /// again on the B side. The picture repeats, which is what makes the
+    /// comparison honest: the ear hears the identical moment twice.
+    case loop
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .ab: return "A/B-Wechsel"
+        case .loop: return "Loop"
+        }
+    }
+
+    var note: String {
+        switch self {
+        case .ab: return "Der Ton wechselt an jedem Wechselpunkt — das Bild läuft durch."
+        case .loop: return "Die Auswahl läuft einmal mit A, dann dieselbe Auswahl noch einmal mit B."
+        }
+    }
+}
+
 /// A social-media excerpt with one or more A/B switches inside it.
 ///
 /// The switches simply alternate: the clip opens on the "before" source, flips
 /// to "after" at the first point, back at the second, and so on. That keeps a
 /// rhythm of comparisons expressible as a plain list of times, with no per-
 /// segment state to keep consistent.
+///
+/// A loop clip has no switches inside the selection — its A/B boundary sits
+/// between the two passes, which only exist in the exported composition.
 struct Clip: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
     var name: String
+    var kind: ClipKind = .ab
+    /// How many times the B side repeats the selection on a loop clip.
+    var loopPasses: Int = 1
+    /// Everything about how this clip looks and reads. Each clip carries its
+    /// own, so one project can plan several completely different playouts.
+    var look: ClipLook = ClipLook()
+    /// True when the file this clip came from stored a look of its own —
+    /// used once, on open, to migrate projects that kept the look globally.
+    /// Not encoded.
+    var hasStoredLook: Bool = true
     /// Project-timeline seconds. t = 0 is the first frame of the video.
     var start: Double
     var end: Double
@@ -143,8 +183,10 @@ struct Clip: Identifiable, Codable, Hashable {
 
     /// The switches actually in force: sorted, de-duplicated and inside the
     /// clip. An empty list yields the midpoint, which is the common case.
+    /// A loop clip has none in project time — its boundary lies between the
+    /// exported passes, not inside the selection.
     var switches: [Double] {
-        guard duration > 0 else { return [] }
+        guard duration > 0, kind == .ab else { return [] }
         guard !switchPoints.isEmpty else { return [start + duration / 2] }
         var seen: [Double] = []
         for point in switchPoints.map({ min(max($0, start), end) }).sorted() {
@@ -195,9 +237,12 @@ struct Clip: Identifiable, Codable, Hashable {
         switchPoints = []
     }
 
+    /// `hasStoredLook` is deliberately absent: it describes the file the clip
+    /// came from, not the clip.
     private enum CodingKeys: String, CodingKey {
         case id, name, start, end, switchPoints
         case beforeSourceID, afterSourceID, panX, panY, isEnabled
+        case kind, loopPasses, look
     }
 
     /// Projects written before the switches became a list stored a single
@@ -213,23 +258,27 @@ struct Clip: Identifiable, Codable, Hashable {
         name: String,
         start: Double,
         end: Double,
+        kind: ClipKind = .ab,
         switchPoints: [Double] = [],
         beforeSourceID: UUID? = nil,
         afterSourceID: UUID? = nil,
         panX: Double = 0,
         panY: Double = 0,
-        isEnabled: Bool = true
+        isEnabled: Bool = true,
+        look: ClipLook = ClipLook()
     ) {
         self.id = id
         self.name = name
         self.start = start
         self.end = end
+        self.kind = kind
         self.switchPoints = switchPoints
         self.beforeSourceID = beforeSourceID
         self.afterSourceID = afterSourceID
         self.panX = panX
         self.panY = panY
         self.isEnabled = isEnabled
+        self.look = look
     }
 
     init(from decoder: Decoder) throws {
@@ -251,6 +300,17 @@ struct Clip: Identifiable, Codable, Hashable {
         panX = try container.decodeIfPresent(Double.self, forKey: .panX) ?? 0
         panY = try container.decodeIfPresent(Double.self, forKey: .panY) ?? 0
         isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        kind = (try? container.decode(ClipKind.self, forKey: .kind)) ?? .ab
+        loopPasses = (try? container.decode(Int.self, forKey: .loopPasses)) ?? 1
+        // A file from before the look moved onto the clip has no `look` key.
+        // Remember that, so the project can seed it from the old global look.
+        if let stored = try? container.decode(ClipLook.self, forKey: .look) {
+            look = stored
+            hasStoredLook = true
+        } else {
+            look = ClipLook()
+            hasStoredLook = false
+        }
     }
 
     /// A filesystem-safe version of the clip name.
@@ -539,17 +599,26 @@ enum VideoCodecChoice: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
-// MARK: - Export settings
+// MARK: - Per-clip look
 
-struct ExportSettings: Codable, Hashable {
-    var formats: [SocialFormat] = [.portrait45, .portrait916]
-    var outputFolderPath: String?
-    var codec: VideoCodecChoice = .h264
+/// Everything about how one clip looks and reads: framing, grade, colour,
+/// type, strips, texture, and the audio crossfade at its seams.
+///
+/// This lives on the clip rather than on the project, so a single project can
+/// plan two or three completely different playouts — a framed ochre A/B, a
+/// full-bleed verdigris loop — and a new clip never inherits a stray setting
+/// from its neighbour.
+///
+/// The field names deliberately match the keys `ExportSettings` used while
+/// the look was global: a project written back then decodes its `export`
+/// object *as* a `ClipLook`, and that is the whole migration.
+struct ClipLook: Codable, Hashable {
+    /// Which of the Sound Matters family carries this clip.
+    var accent: BrandAccent = .ocker
     var fitMode: FitMode = .fill
     /// Muted rather than monochrome, and only slightly: with the frame holding
     /// still this is the one remaining change in the picture, and it is meant
-    /// to be a hint rather than an event. Set it to colour as well and nothing
-    /// in the picture moves at all — the type carries the switch on its own.
+    /// to be a hint rather than an event.
     var beforeLook: LookStyle = .desaturated
     var afterLook: LookStyle = .color
     var frameTreatment: FrameTreatment = .insetBoth
@@ -565,16 +634,7 @@ struct ExportSettings: Codable, Hashable {
     var labelPosition: LabelPosition = .bottom
     var labelStyle: LabelStyle = .balken
     var labelShadow: LabelShadowMode = .auto
-    /// Length of the audio crossfade centred on the split, in milliseconds.
-    var audioCrossfadeMilliseconds: Double = 40
-    /// Manual bitrate override in Mbit/s. `nil` uses the automatic estimate.
-    var videoBitrateMbps: Double?
-    /// Which of the Sound Matters family carries this project. Ochre by
-    /// default: the website's film section runs in ochre, and an A/B out of a
-    /// finished film belongs to that section.
-    var accent: BrandAccent = .ocker
-    /// The two mono strips with their hard rules, top and bottom — the frame
-    /// of the sticker, unfolded. Off leaves the big label on its own.
+    /// The two mono strips with their hard rules, top and bottom.
     var showStrips: Bool = true
     /// Top left. Empty falls back to the film's name.
     var stripLeft: String = ""
@@ -584,10 +644,54 @@ struct ExportSettings: Codable, Hashable {
     var stripAddress: String = "soundmatters.audio"
     /// Grain over the picture, `opacity: .26` on the site. Zero is off.
     var grainStrength: Double = 0.26
-    /// The site's veil, a radial darkening towards the corners. Its outer stop
-    /// is `.72`; a playout is dialled back because it puts type in the corners
-    /// where the site puts none. Zero is off.
+    /// The site's veil, dialled back for a canvas that carries type in the
+    /// corners. Zero is off.
     var vignetteStrength: Double = 0.55
+    /// Length of the audio crossfade at each seam, in milliseconds.
+    var audioCrossfadeMilliseconds: Double = 40
+
+    init() {}
+
+    /// Decoded key by key so a clip written by an earlier version still
+    /// opens — the same reasoning as everywhere else in this file.
+    init(from decoder: Decoder) throws {
+        self = ClipLook()
+        guard let box = try? decoder.container(keyedBy: CodingKeys.self) else { return }
+        if let value = try? box.decode(BrandAccent.self, forKey: .accent) { accent = value }
+        if let value = try? box.decode(FitMode.self, forKey: .fitMode) { fitMode = value }
+        if let value = try? box.decode(LookStyle.self, forKey: .beforeLook) { beforeLook = value }
+        if let value = try? box.decode(LookStyle.self, forKey: .afterLook) { afterLook = value }
+        if let value = try? box.decode(FrameTreatment.self, forKey: .frameTreatment) { frameTreatment = value }
+        if let value = try? box.decode(FrameBackdrop.self, forKey: .frameBackdrop) { frameBackdrop = value }
+        if let value = try? box.decode(Double.self, forKey: .insetScale) { insetScale = value }
+        if let value = try? box.decode(Bool.self, forKey: .showFrameBorder) { showFrameBorder = value }
+        if let value = try? box.decode(Bool.self, forKey: .showLabels) { showLabels = value }
+        if let value = try? box.decode(String.self, forKey: .beforeLabel) { beforeLabel = value }
+        if let value = try? box.decode(String.self, forKey: .afterLabel) { afterLabel = value }
+        if let value = try? box.decode(String.self, forKey: .subtitleText) { subtitleText = value }
+        if let value = try? box.decode(LabelPosition.self, forKey: .labelPosition) { labelPosition = value }
+        if let value = try? box.decode(LabelStyle.self, forKey: .labelStyle) { labelStyle = value }
+        if let value = try? box.decode(LabelShadowMode.self, forKey: .labelShadow) { labelShadow = value }
+        if let value = try? box.decode(Bool.self, forKey: .showStrips) { showStrips = value }
+        if let value = try? box.decode(String.self, forKey: .stripLeft) { stripLeft = value }
+        if let value = try? box.decode(String.self, forKey: .stripNote) { stripNote = value }
+        if let value = try? box.decode(String.self, forKey: .stripAddress) { stripAddress = value }
+        if let value = try? box.decode(Double.self, forKey: .grainStrength) { grainStrength = value }
+        if let value = try? box.decode(Double.self, forKey: .vignetteStrength) { vignetteStrength = value }
+        if let value = try? box.decode(Double.self, forKey: .audioCrossfadeMilliseconds) {
+            audioCrossfadeMilliseconds = value
+        }
+    }
+}
+
+// MARK: - Export settings
+
+struct ExportSettings: Codable, Hashable {
+    var formats: [SocialFormat] = [.portrait45, .portrait916]
+    var outputFolderPath: String?
+    var codec: VideoCodecChoice = .h264
+    /// Manual bitrate override in Mbit/s. `nil` uses the automatic estimate.
+    var videoBitrateMbps: Double?
     /// Build the two cards into the video file as well as writing them out.
     var cardAttachment: CardAttachment = .story
     /// How long the title card is held at the head, in seconds.
@@ -631,37 +735,17 @@ struct ExportSettings: Codable, Hashable {
     /// opens. Swift's synthesised decoder treats a missing key as an error
     /// even where the property has a default, which would mean every release
     /// that adds a setting invalidates every saved project.
+    ///
+    /// The look keys that used to live here are not read any more — the
+    /// project decoder reads the same object a second time as a `ClipLook`
+    /// and seeds the clips with it.
     init(from decoder: Decoder) throws {
         self = ExportSettings()
         guard let box = try? decoder.container(keyedBy: CodingKeys.self) else { return }
         if let value = try? box.decode([SocialFormat].self, forKey: .formats) { formats = value }
         if let value = try? box.decode(String.self, forKey: .outputFolderPath) { outputFolderPath = value }
         if let value = try? box.decode(VideoCodecChoice.self, forKey: .codec) { codec = value }
-        if let value = try? box.decode(FitMode.self, forKey: .fitMode) { fitMode = value }
-        if let value = try? box.decode(LookStyle.self, forKey: .beforeLook) { beforeLook = value }
-        if let value = try? box.decode(LookStyle.self, forKey: .afterLook) { afterLook = value }
-        if let value = try? box.decode(FrameTreatment.self, forKey: .frameTreatment) { frameTreatment = value }
-        if let value = try? box.decode(FrameBackdrop.self, forKey: .frameBackdrop) { frameBackdrop = value }
-        if let value = try? box.decode(Double.self, forKey: .insetScale) { insetScale = value }
-        if let value = try? box.decode(Bool.self, forKey: .showFrameBorder) { showFrameBorder = value }
-        if let value = try? box.decode(Bool.self, forKey: .showLabels) { showLabels = value }
-        if let value = try? box.decode(String.self, forKey: .beforeLabel) { beforeLabel = value }
-        if let value = try? box.decode(String.self, forKey: .afterLabel) { afterLabel = value }
-        if let value = try? box.decode(String.self, forKey: .subtitleText) { subtitleText = value }
-        if let value = try? box.decode(LabelPosition.self, forKey: .labelPosition) { labelPosition = value }
-        if let value = try? box.decode(LabelStyle.self, forKey: .labelStyle) { labelStyle = value }
-        if let value = try? box.decode(LabelShadowMode.self, forKey: .labelShadow) { labelShadow = value }
-        if let value = try? box.decode(Double.self, forKey: .audioCrossfadeMilliseconds) {
-            audioCrossfadeMilliseconds = value
-        }
         if let value = try? box.decode(Double.self, forKey: .videoBitrateMbps) { videoBitrateMbps = value }
-        if let value = try? box.decode(BrandAccent.self, forKey: .accent) { accent = value }
-        if let value = try? box.decode(Bool.self, forKey: .showStrips) { showStrips = value }
-        if let value = try? box.decode(String.self, forKey: .stripLeft) { stripLeft = value }
-        if let value = try? box.decode(String.self, forKey: .stripNote) { stripNote = value }
-        if let value = try? box.decode(String.self, forKey: .stripAddress) { stripAddress = value }
-        if let value = try? box.decode(Double.self, forKey: .grainStrength) { grainStrength = value }
-        if let value = try? box.decode(Double.self, forKey: .vignetteStrength) { vignetteStrength = value }
         if let value = try? box.decode(CardAttachment.self, forKey: .cardAttachment) { cardAttachment = value }
         if let value = try? box.decode(Double.self, forKey: .leadSeconds) { leadSeconds = value }
         if let value = try? box.decode(Double.self, forKey: .tailSeconds) { tailSeconds = value }
@@ -834,6 +918,18 @@ struct ABProject: Codable {
         if let value = try? box.decode(UUID.self, forKey: .defaultAfterSourceID) { defaultAfterSourceID = value }
         if let value = try? box.decode(ExportSettings.self, forKey: .export) { export = value }
         if let value = try? box.decode(StillSettings.self, forKey: .stills) { stills = value }
+
+        // Projects written while the look was global kept it inside `export`.
+        // `ClipLook`'s field names match those old keys on purpose, so the
+        // migration is simply reading the same object a second time and
+        // seeding every clip that arrived without a look of its own.
+        if clips.contains(where: { !$0.hasStoredLook }),
+           let legacy = try? box.decode(ClipLook.self, forKey: .export) {
+            for index in clips.indices where !clips[index].hasStoredLook {
+                clips[index].look = legacy
+                clips[index].hasStoredLook = true
+            }
+        }
     }
 
     var videoURL: URL? {

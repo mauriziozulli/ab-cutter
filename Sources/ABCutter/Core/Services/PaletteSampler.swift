@@ -34,7 +34,8 @@ enum PaletteSampler {
         videoURL: URL,
         at time: CMTime,
         format: SocialFormat,
-        settings: ExportSettings,
+        look: ClipLook,
+        safeArea: SafeArea,
         clip: Clip,
         isBefore: Bool
     ) async -> LabelTint {
@@ -46,30 +47,29 @@ enum PaletteSampler {
         // and a tint read off a monochrome frame would come back grey.
         let aspect = format.size.height / format.size.width
         let proxy = CGSize(width: 200, height: (200 * aspect).rounded())
-        let safeArea = settings.safeArea(for: format)
         let layout = FrameRenderer.layout(
             targetSize: proxy,
-            treatment: settings.frameTreatment,
+            treatment: look.frameTreatment,
             isBefore: isBefore,
-            insetScale: settings.insetScale,
-            labelPosition: settings.labelPosition,
+            insetScale: look.insetScale,
+            labelPosition: look.labelPosition,
             safeArea: safeArea,
-            showStrips: settings.showStrips
+            showStrips: look.showStrips
         )
         let plan = RenderPlan(
             targetSize: proxy,
-            fitMode: settings.fitMode,
+            fitMode: look.fitMode,
             panX: clip.panX,
             panY: clip.panY,
             switchTimes: [.zero],
             beforeLook: .color,
             afterLook: .color,
-            frameTreatment: settings.frameTreatment,
-            frameBackdrop: settings.frameBackdrop,
-            insetScale: settings.insetScale,
-            labelPosition: settings.labelPosition,
+            frameTreatment: look.frameTreatment,
+            frameBackdrop: look.frameBackdrop,
+            insetScale: look.insetScale,
+            labelPosition: look.labelPosition,
             safeArea: safeArea,
-            showStrips: settings.showStrips,
+            showStrips: look.showStrips,
             // The grain and the veil are deliberately left out: the tint is
             // measured against the picture, and texture would only add noise
             // to the reading without changing what the eye has to beat.

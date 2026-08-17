@@ -144,6 +144,21 @@ struct PlayerPane: View {
             Toggle("Im Clip bleiben", isOn: limitBinding)
                 .toggleStyle(.checkbox)
                 .font(.caption)
+                .disabled(player.isClipPreview)
+
+            Divider().frame(height: 16)
+
+            // The export, played: clip composition, mix, look — and for a
+            // loop both passes, which the raw timeline cannot show at all.
+            Toggle("Clip-Vorschau", isOn: Binding(
+                get: { player.isClipPreview },
+                set: { _ in state.toggleClipPreview() }
+            ))
+            .toggleStyle(.button)
+            .controlSize(.small)
+            .tint(state.selectedClip.map { Theme.tint(for: $0.kind) })
+            .disabled(state.selectedClip == nil)
+            .help("Spielt den gewählten Clip genau so, wie er exportiert wird — beim Loop mit beiden Durchläufen")
 
             Spacer()
         }

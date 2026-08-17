@@ -40,8 +40,8 @@ struct RootView: View {
 
     // MARK: - Inspector
 
-    /// One tab at a time rather than one long scroll. The four tabs match the
-    /// four moments of the job: cut it, style it, make its cover, ship it.
+    /// One tab at a time rather than one long scroll. Three tabs since the
+    /// look moved onto the clip: cut and style it, make its cover, ship it.
     private var inspector: some View {
         VStack(spacing: 0) {
             if state.project.hasVideo {
@@ -61,7 +61,6 @@ struct RootView: View {
                     Group {
                         switch state.inspectorTab {
                         case .clips: ClipsPanel(state: state)
-                        case .look: LookPanel(state: state)
                         case .cover: StillsPanel(state: state)
                         case .export: ExportPanel(state: state, queue: state.exportQueue)
                         }
