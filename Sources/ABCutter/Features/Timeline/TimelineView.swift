@@ -256,13 +256,25 @@ struct TimelineView: View {
         let endX = x(for: source.offsetSeconds + source.durationSeconds, width: width)
         let rect = CGRect(x: startX, y: top + 3, width: max(endX - startX, 2), height: height)
 
+        // The colours name what the monitor actually plays: the selected
+        // clip's A and B pair, clip-level overrides included. A grey lane is
+        // a lane the A/B never plays — and says so.
+        let beforeID = state.selectedClip.flatMap { state.project.beforeSource(for: $0)?.id }
+            ?? state.project.defaultBeforeSourceID
+        let afterID = state.selectedClip.flatMap { state.project.afterSource(for: $0)?.id }
+            ?? state.project.defaultAfterSourceID
+
         let tint: Color
-        if source.id == state.project.defaultBeforeSourceID {
+        let isAssigned: Bool
+        if source.id == beforeID {
             tint = Theme.beforeTint
-        } else if source.id == state.project.defaultAfterSourceID {
+            isAssigned = true
+        } else if source.id == afterID {
             tint = Theme.afterTint
+            isAssigned = true
         } else {
             tint = .secondary
+            isAssigned = false
         }
 
         context.fill(
@@ -305,7 +317,7 @@ struct TimelineView: View {
         }
 
         context.draw(
-            Text(laneLabel(for: source))
+            Text(laneLabel(for: source, isAssigned: isAssigned))
                 .font(.system(size: 9, weight: .medium))
                 .foregroundColor(.secondary),
             at: CGPoint(x: max(rect.minX, 0) + 4, y: top + 9),
@@ -315,9 +327,12 @@ struct TimelineView: View {
 
     /// The lane's name, plus the live offset on a movable lane — the number
     /// being edited when the lane is dragged, so it belongs next to the wave.
-    private func laneLabel(for source: AudioSource) -> String {
+    /// A lane the A/B never plays says it is mute, so silence reads as an
+    /// unassigned side rather than a failed sync.
+    private func laneLabel(for source: AudioSource, isAssigned: Bool) -> String {
         guard !source.isEmbedded else { return source.name }
-        return String(format: "%@  %+.3f s", source.name, source.offsetSeconds)
+        let label = String(format: "%@  %+.3f s", source.name, source.offsetSeconds)
+        return isAssigned ? label : label + "  ·  stumm — als A oder B wählen"
     }
 
     /// One vertical stroke per visible pixel column, each the loudest moment

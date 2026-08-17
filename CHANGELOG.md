@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.16.2 — a synced track is a track you hear
+
+- **A waveform-synced mix now assigns itself to the B side** — as long as
+  no external B has been chosen yet. Before, the sync placed the track in
+  time and left it grey and mute in the monitor, which read as a failed
+  sync; a track already chosen as A or B, or a project with a real B, is
+  never touched. The status line says when it happened («als B gewählt»).
+- **A grey lane says why it is grey.** Lanes the A/B never plays are
+  labelled «stumm — als A oder B wählen»; grey means unassigned, not
+  broken. The lane colours now follow what the monitor actually plays for
+  the selected clip — per-clip source choices included — instead of only
+  the project defaults.
+
 ## 0.16.1 — builds in current Xcode
 
 - **Fixed: the aligner did not parse in newer Xcode.** A lag range was

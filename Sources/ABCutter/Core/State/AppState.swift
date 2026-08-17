@@ -708,10 +708,24 @@ final class AppState: ObservableObject {
                 guard var updated = self.project.audioSources.first(where: { $0.id == source.id }) else { return }
                 updated.offsetSeconds = result.offsetSeconds
                 updated.syncMode = .waveform
+
+                // Nobody syncs a track to leave it silent. As long as no
+                // external B has been chosen, the freshly synced mix becomes
+                // the B side — otherwise it would sit grey in the timeline
+                // and mute in the monitor, which reads as a failed sync.
+                let embeddedID = self.project.audioSources.first(where: { $0.isEmbedded })?.id
+                let afterIsFree = self.project.defaultAfterSourceID == nil
+                    || self.project.defaultAfterSourceID == embeddedID
+                let becameAfter = afterIsFree && updated.id != self.project.defaultBeforeSourceID
+                if becameAfter {
+                    self.project.defaultAfterSourceID = updated.id
+                }
+
                 self.updateSource(updated)
                 self.status = String(
-                    format: "%@ per Wellenform gelegt: %+.3f s · Übereinstimmung %.0f %%",
-                    source.name, result.offsetSeconds, result.confidence * 100
+                    format: "%@ per Wellenform gelegt: %+.3f s · Übereinstimmung %.0f %%%@",
+                    source.name, result.offsetSeconds, result.confidence * 100,
+                    becameAfter ? " · als B gewählt" : ""
                 )
             } catch {
                 self?.errorMessage = error.localizedDescription
