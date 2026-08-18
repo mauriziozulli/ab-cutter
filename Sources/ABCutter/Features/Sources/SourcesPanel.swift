@@ -23,10 +23,15 @@ struct SourcesPanel: View {
     private var videoSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let url = state.project.videoURL {
-                Text(url.lastPathComponent)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(2)
-                    .truncationMode(.middle)
+                HStack(spacing: 5) {
+                    Image(systemName: "film")
+                        .font(.caption)
+                        .foregroundStyle(Theme.videoTint)
+                    Text(url.lastPathComponent)
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                }
                 HStack(spacing: 6) {
                     Text("\(Int(state.project.videoNaturalWidth))×\(Int(state.project.videoNaturalHeight))")
                     Text("·")
@@ -198,10 +203,30 @@ struct AudioSourceRow: View {
                     .labelsHidden()
                     .help("In der Vorschau berücksichtigen")
 
+                // What the layer is: violet film for sound out of a video
+                // file (the embedded track included), green wave for a plain
+                // audio file. What it plays comes after the name.
+                Image(systemName: source.isEmbedded || source.isFromVideoFile ? "film" : "waveform")
+                    .font(.caption)
+                    .foregroundStyle(
+                        source.isEmbedded || source.isFromVideoFile
+                            ? Theme.videoTint
+                            : Theme.audioFileTint
+                    )
+                    .help(
+                        source.isEmbedded
+                            ? "Tonspur des geladenen Films"
+                            : source.isFromVideoFile
+                                ? "Ton aus einer Videodatei — nur die Tonspur wird verwendet"
+                                : "Audiodatei"
+                    )
+
                 Text(source.name)
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
+
+                roleBadge
 
                 Spacer()
 
@@ -243,6 +268,33 @@ struct AudioSourceRow: View {
         }
         .padding(8)
         .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+    }
+
+    /// What the monitor does with this layer right now: A in Rost, B in
+    /// blue, or a quiet grey «stumm» — the same colours the timeline lanes
+    /// wear, fed by the same resolution.
+    @ViewBuilder
+    private var roleBadge: some View {
+        let (beforeID, afterID) = state.monitoredPair
+        if source.id == beforeID {
+            badge("A", tint: Theme.beforeTint)
+        } else if source.id == afterID {
+            badge("B", tint: Theme.afterTint)
+        } else {
+            Text("stumm")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+                .help("Keiner Seite zugewiesen — unten als A oder B wählen, damit die Spur zu hören ist")
+        }
+    }
+
+    private func badge(_ label: String, tint: Color) -> some View {
+        Text(label)
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(tint, in: Capsule())
     }
 
     private var enabledBinding: Binding<Bool> {

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.17.0 — reference audio out of an earlier cut, colours that answer questions
+
+- **A video file is a valid audio source.** «Ton hinzufügen …» takes an
+  earlier cut of the film alongside WAVs and mixes; only its audio track
+  is used. This is where the old reference sound usually survives — the
+  graded final that comes back from the editor carries the finished mix,
+  the temp version still carries the temp track. (The plumbing could
+  already do this; now the dialog says so and the list shows it.)
+- **The sources list wears two kinds of colour.** What a layer *is*:
+  a violet film mark for sound that came out of a video file — the
+  embedded track included — and a green wave for a plain audio file.
+  What a layer *plays*: an A badge in Rost, a B badge in blue, or a
+  quiet «stumm» with the way out in its tooltip. The badges follow the
+  selected clip's actual pair, fed by the same resolution as the
+  timeline lanes, so the two views cannot disagree.
+- **A wears Rost now, everywhere.** The old grey A-tint disappeared next
+  to the genuinely grey unassigned lanes; red against blue survives every
+  glance. Timeline lanes, the A/B pickers, «Nur A», «Hört A» — one colour
+  per side across the app.
+
 ## 0.16.3 — the export warns before a switch that switches nothing
 
 - **Pre-flight check on every export.** For each enabled clip the app now

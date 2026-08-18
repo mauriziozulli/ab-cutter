@@ -264,10 +264,7 @@ struct TimelineView: View {
         // The colours name what the monitor actually plays: the selected
         // clip's A and B pair, clip-level overrides included. A grey lane is
         // a lane the A/B never plays — and says so.
-        let beforeID = state.selectedClip.flatMap { state.project.beforeSource(for: $0)?.id }
-            ?? state.project.defaultBeforeSourceID
-        let afterID = state.selectedClip.flatMap { state.project.afterSource(for: $0)?.id }
-            ?? state.project.defaultAfterSourceID
+        let (beforeID, afterID) = state.monitoredPair
 
         let tint: Color
         let isAssigned: Bool

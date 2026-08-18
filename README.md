@@ -11,8 +11,16 @@ No NLE round-trip, no manual re-crop for every aspect ratio.
 
 **Lay the audio under the picture.** Load the finished film, then add as many
 audio layers as you like: the original production sound, your final mix,
-stems such as SFX-only or music-only. Every layer sits on its own lane, and
-every clip picks its own pair of them to compare.
+stems such as SFX-only or music-only — or an **earlier cut of the film**, from
+which only the audio track is taken. That is where the old reference sound
+usually survives: the graded final carries the finished mix, the temp version
+still carries the temp track. Every layer sits on its own lane, and every
+clip picks its own pair of them to compare.
+
+The sources list answers two questions in colour: what a layer *is* — violet
+film mark for sound out of a video file, green wave for a plain audio file —
+and what it *plays* — an A badge in Rost, a B badge in blue, or «stumm» for
+a layer no side uses yet.
 
 **One fixed design, two free colours.** Every playout is the same object:
 the picture in colour, framed with a thin border over a blurred copy of

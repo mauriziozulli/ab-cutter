@@ -9,9 +9,19 @@ enum Theme {
     static let hairline = Color(nsColor: .separatorColor)
     static let accent = Color.accentColor
 
-    /// Before / after identity colours, reused across the timeline and panels.
-    static let beforeTint = Color(red: 0.62, green: 0.64, blue: 0.68)
+    /// Before / after identity colours, reused across the timeline and
+    /// panels: the reference side wears Rost, the mix side blue. Red against
+    /// blue survives every glance; the old grey A disappeared next to the
+    /// unassigned lanes, which are the ones that are *actually* grey.
+    static let beforeTint = Color(red: 0.71, green: 0.34, blue: 0.18)     // Rost
     static let afterTint = Color(red: 0.20, green: 0.62, blue: 0.94)
+
+    /// What a source *is*, as opposed to what it plays: violet marks the
+    /// picture and any sound that came out of a video file, green a plain
+    /// audio file. Together with the role colours above, the sources list
+    /// answers both questions at a glance.
+    static let videoTint = Color(red: 0.55, green: 0.44, blue: 0.78)      // Violett
+    static let audioFileTint = Color(red: 0.18, green: 0.56, blue: 0.48)  // Verdigris
 
     /// One identity colour per clip kind, both taken from the brand family:
     /// ochre for an A/B, dust blue for a loop. The timeline, the clip list

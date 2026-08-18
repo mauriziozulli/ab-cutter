@@ -78,6 +78,16 @@ struct AudioSource: Identifiable, Codable, Hashable {
 
     var isEmbedded: Bool { path == nil }
 
+    /// True when this layer's sound was pulled out of a video file — an
+    /// earlier cut, an editor's return, the versions where the old reference
+    /// audio still lives. Judged by the file, not stored: renaming teaches
+    /// nothing and old projects need no migration.
+    var isFromVideoFile: Bool {
+        guard let path else { return false }
+        let ext = URL(fileURLWithPath: path).pathExtension.lowercased()
+        return ["mov", "mp4", "m4v", "mxf", "avi", "mts", "m2ts", "mkv"].contains(ext)
+    }
+
     var url: URL? {
         guard let path else { return nil }
         return URL(fileURLWithPath: path)

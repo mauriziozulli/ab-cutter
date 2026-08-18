@@ -40,6 +40,17 @@ final class AppState: ObservableObject {
         return project.clips.first { $0.id == selectedClipID }
     }
 
+    /// The pair the monitor actually plays right now: the selected clip's A
+    /// and B — clip-level overrides included — or the project defaults when
+    /// no clip is selected. The timeline lanes and the sources list both
+    /// colour by this, so the two views can never disagree.
+    var monitoredPair: (before: UUID?, after: UUID?) {
+        guard let clip = selectedClip else {
+            return (project.defaultBeforeSourceID, project.defaultAfterSourceID)
+        }
+        return (project.beforeSource(for: clip)?.id, project.afterSource(for: clip)?.id)
+    }
+
     var selectedClipIndex: Int? {
         guard let selectedClipID else { return nil }
         return project.clips.firstIndex { $0.id == selectedClipID }
@@ -69,8 +80,8 @@ final class AppState: ObservableObject {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.audio, .wav, .aiff, .mp3, .mpeg4Audio, .movie]
-        panel.message = "Mixe oder Stems wählen, die unters Bild sollen."
+        panel.allowedContentTypes = [.audio, .wav, .aiff, .mp3, .mpeg4Audio, .movie, .quickTimeMovie, .mpeg4Movie]
+        panel.message = "Mixe, Stems — oder frühere Videofassungen: von einem Video wird nur die Tonspur übernommen."
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls
         Task { await addAudio(urls: urls) }
