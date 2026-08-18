@@ -439,27 +439,6 @@ final class AppState: ObservableObject {
         addClipAtPlayhead(kind: .loop)
     }
 
-    /// Snaps every clip to the house length, anchored on its existing in point.
-    func applyDefaultLengthToAllClips() {
-        guard !project.clips.isEmpty else { return }
-        let length = project.defaultClipLengthSeconds
-        for index in project.clips.indices {
-            project.clips[index] = reshaped(project.clips[index], start: project.clips[index].start, length: length)
-        }
-        status = "\(project.clips.count) Clip\(project.clips.count == 1 ? "" : "s") auf \(formattedLength(length)) gesetzt."
-        player.apply(project: project, selectedClip: selectedClip)
-    }
-
-    func setDefaultClipLength(_ seconds: Double) {
-        project.defaultClipLengthSeconds = max(seconds, project.frameDuration)
-    }
-
-    private func formattedLength(_ seconds: Double) -> String {
-        seconds == seconds.rounded()
-            ? "\(Int(seconds)) s"
-            : String(format: "%.1f s", seconds)
-    }
-
     func removeClip(_ clip: Clip) {
         project.clips.removeAll { $0.id == clip.id }
         if selectedClipID == clip.id {
@@ -493,28 +472,18 @@ final class AppState: ObservableObject {
         refreshPreviewLabels()
     }
 
-    /// Sets the selected clip's in point to the playhead. With a fixed house
-    /// length the whole window slides instead of the head being trimmed.
+    /// Trims the selected clip's in point to the playhead. The switches stay
+    /// where they are in the film — an edge is not a reason to move the cut.
     func markIn() {
         guard var clip = selectedClip else { return }
-        if project.keepClipLengthFixed {
-            clip = reshaped(clip, start: player.currentTime, length: project.defaultClipLengthSeconds)
-        } else {
-            clip.start = min(player.currentTime, clip.end - project.frameDuration)
-        }
+        clip.start = min(player.currentTime, clip.end - project.frameDuration)
         updateClip(clip)
     }
 
-    /// Sets the out point to the playhead — with a fixed length, the window
-    /// ends here and its head follows.
+    /// Trims the out point to the playhead.
     func markOut() {
         guard var clip = selectedClip else { return }
-        if project.keepClipLengthFixed {
-            let length = project.defaultClipLengthSeconds
-            clip = reshaped(clip, start: player.currentTime - length, length: length)
-        } else {
-            clip.end = max(player.currentTime, clip.start + project.frameDuration)
-        }
+        clip.end = max(player.currentTime, clip.start + project.frameDuration)
         updateClip(clip)
     }
 
@@ -585,11 +554,6 @@ final class AppState: ObservableObject {
         points[nearest] = min(max(seconds, clip.start), clip.end)
         clip.switchPoints = points.sorted()
         project.clips[index] = clip
-    }
-
-    /// Changes one clip's own length, anchored on its in point.
-    func setLength(_ length: Double, for clip: Clip) {
-        updateClip(reshaped(clip, start: clip.start, length: length))
     }
 
     /// Adds an A/B switch at the playhead. The sides simply alternate, so any
@@ -710,6 +674,41 @@ final class AppState: ObservableObject {
             self.player.previewOverlays = overlays
             self.player.apply(project: self.project, selectedClip: self.selectedClip)
         }
+    }
+
+    /// Places one stamped source by timecode: the file's own stamp minus the
+    /// film's «Erstes Bild bei». Deterministic where the waveform match is
+    /// statistical — when both sides carry a stamp, this is the better tool.
+    func syncByTimecode(_ source: AudioSource) {
+        guard let videoStart = project.videoTimecodeStartSeconds else {
+            errorMessage = "Zuerst beim Film «Erstes Bild bei» setzen — ohne Basis sagt ein Stempel nichts."
+            return
+        }
+        guard let stamp = source.timecodeStartSeconds else {
+            errorMessage = "\(source.name) trägt keinen Timecode-Stempel — per Wellenform syncen."
+            return
+        }
+        guard var updated = project.audioSources.first(where: { $0.id == source.id }) else { return }
+        let offset = stamp - videoStart
+        updated.offsetSeconds = offset
+        updated.syncMode = .timecode
+
+        // Same courtesy as the waveform sync: a track synced into place
+        // should be hearable, so it takes the free B side.
+        let embeddedID = project.audioSources.first(where: { $0.isEmbedded })?.id
+        let afterIsFree = project.defaultAfterSourceID == nil
+            || project.defaultAfterSourceID == embeddedID
+        let becameAfter = afterIsFree && updated.id != project.defaultBeforeSourceID
+        if becameAfter { project.defaultAfterSourceID = updated.id }
+
+        updateSource(updated)
+        if offset >= project.videoDurationSeconds || offset + updated.durationSeconds <= 0 {
+            errorMessage = "\(source.name) liegt damit ganz ausserhalb des Bilds — die Timecode-Basis passt vermutlich nicht («Erstes Bild bei» prüfen)."
+        }
+        status = String(
+            format: "%@ per Timecode gelegt: %+.3f s%@",
+            source.name, offset, becameAfter ? " · als B gewählt" : ""
+        )
     }
 
     // MARK: - Waveform sync

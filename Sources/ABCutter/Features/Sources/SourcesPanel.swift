@@ -361,6 +361,14 @@ struct AudioSourceRow: View {
     private var offsetControls: some View {
         HStack(spacing: 4) {
             Button {
+                state.syncByTimecode(source)
+            } label: {
+                Image(systemName: "clock.badge.checkmark")
+            }
+            .help("Per Timecode aufs Bild legen — Stempel der Datei minus «Erstes Bild bei» des Films. Deterministisch, wo die Wellenform schätzt.")
+            .disabled(source.timecodeStartSeconds == nil || state.project.videoTimecodeStartSeconds == nil)
+
+            Button {
                 state.alignByWaveform(source)
             } label: {
                 Image(systemName: "waveform.badge.magnifyingglass")

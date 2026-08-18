@@ -93,14 +93,6 @@ struct AppCommands: Commands {
 
             Divider()
 
-            Button("Auf Hauslänge setzen") { state.snapSelectedClipToHouseLength() }
-                .keyboardShortcut("l", modifiers: [.command, .shift])
-                .disabled(!state.hasSelectedClip)
-            Button("Alle Clips auf Hauslänge") { state.applyDefaultLengthToAllClips() }
-                .disabled(state.project.clips.isEmpty)
-
-            Divider()
-
             Button("Vorheriger Clip") { state.selectAdjacentClip(offset: -1) }
                 .keyboardShortcut(.upArrow, modifiers: [.command, .option])
                 .disabled(state.project.clips.isEmpty)

@@ -115,7 +115,7 @@ struct RootView: View {
 
             step(1, "Fertigen Film laden.", "Timecode und Bildrate werden automatisch gelesen.")
             step(2, "Mixe und Stems hinzufügen.", "Gestempelte Dateien legen sich selbst; den Rest schiebst du.")
-            step(3, "Clips in Hauslänge setzen.", "Suchen, ⌘N, suchen, ⌘N — der A/B-Wechsel landet in der Mitte.")
+            step(3, "Clips setzen.", "Suchen, ⌘N, suchen, ⌘N — Kanten ziehst du nach Gehör, der A/B-Wechsel bleibt stehen.")
             step(4, "Titelbild greifen und exportieren.", "Jeder Clip in jedem Format, in einem Lauf.")
 
             Divider()

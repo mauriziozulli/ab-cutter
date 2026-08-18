@@ -8,7 +8,6 @@ struct ClipsPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ClipLengthCard(state: state)
             clipList
             if let clip = state.selectedClip {
                 ClipInspector(state: state, clip: clip)
@@ -98,91 +97,6 @@ struct ClipsPanel: View {
         )
         .contentShape(Rectangle())
         .onTapGesture { state.selectClip(clip) }
-    }
-}
-
-/// The house length every new clip is cut to. Social platforms publish upper
-/// limits rather than fixed durations — and move them often — so the app keeps
-/// a length *you* choose instead of hard-coding anyone's ceiling.
-@MainActor
-struct ClipLengthCard: View {
-    @ObservedObject var state: AppState
-
-    /// Lengths a before/after cut actually tends to want.
-    private let presets: [Double] = [10, 15, 20, 30, 60]
-
-    @State private var lengthText = ""
-    @State private var isEditingLength = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 4) {
-                ForEach(presets, id: \.self) { preset in
-                    Button("\(Int(preset))s") {
-                        state.setDefaultClipLength(preset)
-                        isEditingLength = false
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .tint(isActive(preset) ? Theme.clipTint : nil)
-                }
-
-                TextField("", text: lengthBinding)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 11, design: .monospaced))
-                    .frame(width: 54)
-                    .multilineTextAlignment(.center)
-                    .onSubmit { isEditingLength = false }
-                    .help("Eigene Länge in Sekunden")
-            }
-
-            Toggle("Alle Clips auf dieser Länge halten", isOn: Binding(
-                get: { state.project.keepClipLengthFixed },
-                set: { state.project.keepClipLengthFixed = $0 }
-            ))
-            .toggleStyle(.checkbox)
-            .font(.caption)
-            .help("In und Out schieben ein Fenster fester Länge, statt eine Kante zu trimmen")
-
-            HStack(spacing: 6) {
-                Button("Auf alle Clips anwenden") { state.applyDefaultLengthToAllClips() }
-                    .controlSize(.small)
-                    .disabled(state.project.clips.isEmpty)
-                Spacer()
-                Text(splitNote)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .abCard()
-        .abSection("Clip-Länge")
-    }
-
-    private func isActive(_ preset: Double) -> Bool {
-        abs(state.project.defaultClipLengthSeconds - preset) < 0.01
-    }
-
-    private var splitNote: String {
-        let half = state.project.defaultClipLengthSeconds / 2
-        return "A/B-Wechsel bei \(String(format: "%.1f", half)) s"
-    }
-
-    private var lengthBinding: Binding<String> {
-        Binding(
-            get: {
-                isEditingLength
-                    ? lengthText
-                    : String(format: "%g", state.project.defaultClipLengthSeconds)
-            },
-            set: { newValue in
-                isEditingLength = true
-                lengthText = newValue
-                if let parsed = Double(newValue.replacingOccurrences(of: ",", with: ".")), parsed > 0 {
-                    state.setDefaultClipLength(parsed)
-                }
-            }
-        )
     }
 }
 
@@ -345,20 +259,8 @@ struct ClipInspector: View {
                 .frame(width: 46, alignment: .leading)
             Text(String(format: "%.2f s", clip.duration))
                 .timecodeStyle(size: 11)
-            if state.project.keepClipLengthFixed {
-                Image(systemName: "lock.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .help("In und Out schieben ein festes Fenster — Hauslänge oben ändern")
-            }
             Spacer()
-            Button("Hauslänge") {
-                state.setLength(state.project.defaultClipLengthSeconds, for: clip)
-            }
-            .controlSize(.mini)
-            .help("Diesen Clip auf die Hauslänge setzen")
         }
-        .buttonStyle(.bordered)
     }
 
     /// The A/B switches. One is the norm and stays a single line; adding more

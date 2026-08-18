@@ -33,11 +33,6 @@ struct TimelineView: View {
         var originStart: Double
         var originEnd: Double
         var originSplit: Double
-        /// Whether the clip was already selected when the mouse went down.
-        /// Captured here because the drag itself selects the clip at once —
-        /// judged at release, every clip would look "already selected" and a
-        /// click could never park the playhead at the clip's head again.
-        var wasSelected: Bool
         /// A drag that never really moved is a click, and a click on a clip
         /// should park the playhead at its head so its start is visible.
         var moved = false
@@ -371,9 +366,19 @@ struct TimelineView: View {
 
     // MARK: - Interaction
 
+    /// A click into the timeline is a statement about where attention goes —
+    /// whatever text field held the keyboard gives it up, so typing shortcuts
+    /// like the T/R zoom work again immediately.
+    static func releaseKeyboardFocus() {
+        if NSApp.keyWindow?.firstResponder is NSTextView {
+            NSApp.keyWindow?.makeFirstResponder(nil)
+        }
+    }
+
     private func scrubGesture(width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
+                Self.releaseKeyboardFocus()
                 guard value.location.y < rulerHeight else { return }
                 player.seek(to: seconds(forX: value.location.x, width: width))
             }
@@ -409,33 +414,22 @@ struct TimelineView: View {
                 handle: handle,
                 originStart: clip.start,
                 originEnd: clip.end,
-                originSplit: nearestSwitch ?? clip.splitTime,
-                wasSelected: clip.id == state.selectedClipID
+                originSplit: nearestSwitch ?? clip.splitTime
             )
         }
         return nil
     }
 
     private func applyClipDrag(_ drag: ClipDrag, delta: Double) {
-        // With a fixed house length an edge drag slides the window rather than
-        // trimming it, matching what Mark in / Mark out do.
-        let locked = state.project.keepClipLengthFixed
-
         switch drag.handle {
         case .move:
             state.moveClip(drag.clipID, toStart: drag.originStart + delta)
         case .trimIn:
-            if locked {
-                state.moveClip(drag.clipID, toStart: drag.originStart + delta)
-            } else {
-                state.trimClip(drag.clipID, start: drag.originStart + delta, end: drag.originEnd)
-            }
+            // Edges trim the length; the A/B switch stays where it is in the
+            // film — trimClip only clamps it into the new range.
+            state.trimClip(drag.clipID, start: drag.originStart + delta, end: drag.originEnd)
         case .trimOut:
-            if locked {
-                state.moveClip(drag.clipID, toStart: drag.originStart + delta)
-            } else {
-                state.trimClip(drag.clipID, start: drag.originStart, end: drag.originEnd + delta)
-            }
+            state.trimClip(drag.clipID, start: drag.originStart, end: drag.originEnd + delta)
         case .split:
             state.moveSwitch(drag.clipID, from: drag.originSplit, to: drag.originSplit + delta)
         }
@@ -451,6 +445,7 @@ struct TimelineView: View {
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         if clipDrag == nil {
+                            TimelineView.releaseKeyboardFocus()
                             clipDrag = beginClipDrag(atX: value.startLocation.x, width: width)
                             if let clipDrag {
                                 state.focusClip(clipDrag.clipID)
@@ -476,17 +471,11 @@ struct TimelineView: View {
                             // One rebuild at the end rather than one per pixel.
                             state.applyPlayerSettings()
                         } else if let clip = state.project.clips.first(where: { $0.id == finished.clipID }) {
-                            if finished.wasSelected {
-                                // The clip was already selected before this
-                                // click, so the click is about the playhead,
-                                // not the selection. The first click parks at
-                                // the head; every later one is free —
-                                // otherwise the playhead could never be
-                                // placed inside the clip at all.
-                                player.seek(to: seconds(forX: value.location.x, width: width))
-                            } else {
-                                state.selectClip(clip)
-                            }
+                            // A click on a clip means: this clip, from the
+                            // top. Selection and transport land on its head
+                            // together. Free placement lives on the ruler
+                            // and the audio lanes.
+                            state.selectClip(clip)
                         }
                     }
             )
@@ -547,6 +536,7 @@ private struct LaneDragStrip: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
+                        TimelineView.releaseKeyboardFocus()
                         if abs(value.translation.width) > 3 { moved = true }
                         guard moved else { return }
                         if isDraggable {

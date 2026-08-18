@@ -93,18 +93,11 @@ layout, so safe area, strips, frame inset and the clip's pan all count.
 What is inside a line is exactly what that delivery keeps. The guides are
 the «Ausschnitte» checkbox beside the format picker.
 
-**Cut to a house length.** Set the length once — 10, 15, 20, 30, 60 seconds
-or anything you type — and every new clip is that long. With the length locked,
-marking in and out slides a fixed window rather than trimming an edge, so
-clipping a film down to a dozen excerpts is scrub, ⌘N, scrub, ⌘N. Existing
-clips can be snapped to the house length in one go, and the A/B switch keeps
-its relative position so a re-length never moves the reveal.
-
-Social platforms publish upper limits rather than fixed durations, and those
-limits move: Stories cards are cut into segments past their ceiling, Reels run
-into the minutes. The app therefore holds *your* length rather than
-hard-coding anyone's, which is also what keeps a set of before/after cuts
-looking like a series.
+**Cut by ear, not by preset.** ⌘N drops a clip at the playhead; its edges
+trim by dragging or with In/Out, and the timeline click that selects a clip
+parks the transport at its head. Trimming an edge never moves the A/B
+switch: the reveal stays on the moment it was set for, however the clip
+around it breathes.
 
 **Make the cover image.** Park the playhead and grab that frame at the film's
 native resolution. The same grab doubles as a title card: cropped to every

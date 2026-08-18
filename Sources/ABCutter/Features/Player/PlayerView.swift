@@ -279,14 +279,10 @@ struct PlayerPane: View {
 
             Button("In") { state.markIn() }
                 .disabled(clip == nil)
-                .help(state.project.keepClipLengthFixed
-                      ? "Fenster fester Länge hier beginnen"
-                      : "Anfang auf den Abspielkopf trimmen")
+                .help("Anfang auf den Abspielkopf trimmen — der A/B-Wechsel bleibt, wo er ist")
             Button("Out") { state.markOut() }
                 .disabled(clip == nil)
-                .help(state.project.keepClipLengthFixed
-                      ? "Fenster fester Länge hier enden lassen"
-                      : "Trim the tail to the playhead")
+                .help("Ende auf den Abspielkopf trimmen — der A/B-Wechsel bleibt, wo er ist")
             Button("Wechsel +") { state.addSwitchAtPlayhead() }
                 .disabled(clip == nil)
             Button("Neuer Clip") { state.addClipAtPlayhead() }

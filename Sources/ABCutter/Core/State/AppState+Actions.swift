@@ -83,11 +83,6 @@ extension AppState {
         removeClip(clip)
     }
 
-    func snapSelectedClipToHouseLength() {
-        guard let clip = selectedClip else { return }
-        setLength(project.defaultClipLengthSeconds, for: clip)
-    }
-
     /// Steps through clips in timeline order rather than creation order, which
     /// is what the eye expects when they have been dragged about.
     func selectAdjacentClip(offset: Int) {

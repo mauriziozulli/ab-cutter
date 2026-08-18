@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.19.0 — the timeline answers the hand
+
+- **Fixed: a text field kept the keyboard forever.** Clicking into the
+  timeline now releases whatever field was being typed into — which is
+  also why bare **T/R zoom worked once and then died**: the zoom keys
+  stay silent while a text field has focus, and the focus never left.
+  One cause, two symptoms, one fix.
+- **A click on a clip parks the transport at the clip's head**, every
+  time — selection and playhead land together. Free playhead placement
+  lives on the ruler and the audio lanes, where it always was.
+- **Clip edges trim by drag, and the A/B switch stays put.** The
+  fixed-house-length mode is gone: In/Out and edge drags always trim,
+  and a trim never moves the switch — the reveal stays on the moment it
+  was set for. The Clip-Länge card, its menu items and the lock are
+  removed; ⌘N still drops a 20-second clip to start from.
+- **Per-track timecode sync.** Every stamped row has a clock button next
+  to the waveform one: stamp minus «Erstes Bild bei», deterministic
+  where the waveform match is statistical. It takes the free B side just
+  like the waveform sync does, and warns when the base cannot be right.
+
 ## 0.18.0 — timecode with a settable base
 
 - **The film's start timecode is a field now, not a fact.** «Erstes Bild
