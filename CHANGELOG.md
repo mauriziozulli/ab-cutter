@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.18.0 — timecode with a settable base
+
+- **The film's start timecode is a field now, not a fact.** «Erstes Bild
+  bei» in the Bild section shows the embedded stamp when there is one and
+  takes a typed one when there is none — 00:00:00:00 or hour one,
+  whatever the mixes are stamped against. From then on Auto-Sync places
+  every stamped file exactly as if the delivery had carried timecode:
+  audio stamp minus picture stamp, a mix that starts a few seconds early
+  simply gets a negative offset and is trimmed at the head.
+- **Every stamped source shows its own timecode in the list**, so the
+  base the mixes were set against can be read straight off the rows.
+- **Auto-Sync warns when a file lands entirely outside the picture** —
+  the hour-one-against-zero trap used to play as silence and read as a
+  failed sync; now it says which files strayed and what to check.
+- **Fixed: «Wellenform» (alle Spuren) was disabled whenever the video had
+  no timecode** — exactly the situation waveform sync exists for. The
+  guard belonged to Auto-Sync and sits there now.
+
 ## 0.17.0 — reference audio out of an earlier cut, colours that answer questions
 
 - **A video file is a valid audio source.** «Ton hinzufügen …» takes an

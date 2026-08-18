@@ -38,7 +38,12 @@ kinds carry their own colours on the timeline, and the player's clip preview
 
 **Sync by timecode, by waveform, or by hand.** WAV files stamped with a
 Broadcast Wave `bext` time reference and QuickTime files with a `tmcd`
-timecode track are lined up against the picture automatically. Everything
+timecode track are lined up against the picture automatically. A delivery
+without an embedded stamp still has a known base: type the film's start
+timecode into **«Erstes Bild bei»** — 00:00:00:00 or hour one, whatever the
+mixes are stamped against — and Auto-Sync works exactly as if the file had
+carried it. A mix that starts a few seconds before the picture gets a
+negative offset and is trimmed at the head. Everything
 else can be synced **by the sound itself**: the film's embedded track and a
 mix contain the same dialogue, so cross-correlating the two finds the offset
 a two-pop would have marked — within ±5 ms, and with a confidence readout

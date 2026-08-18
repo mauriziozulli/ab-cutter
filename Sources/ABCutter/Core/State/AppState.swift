@@ -239,20 +239,34 @@ final class AppState: ObservableObject {
         }
 
         var synced = 0
+        var strays: [String] = []
         for index in project.audioSources.indices {
             guard !project.audioSources[index].isEmbedded else {
                 project.audioSources[index].offsetSeconds = 0
                 continue
             }
             guard let audioStart = project.audioSources[index].timecodeStartSeconds else { continue }
-            project.audioSources[index].offsetSeconds = audioStart - videoStart
+            let offset = audioStart - videoStart
+            project.audioSources[index].offsetSeconds = offset
             project.audioSources[index].syncMode = .timecode
             synced += 1
+
+            // A stamp on the wrong base — hour one against a zero start, or
+            // the other way round — lands the file entirely outside the
+            // picture, which plays as silence and reads as a failed sync.
+            let duration = project.audioSources[index].durationSeconds
+            if offset >= project.videoDurationSeconds || offset + duration <= 0 {
+                strays.append(project.audioSources[index].name)
+            }
         }
 
         status = synced > 0
             ? "\(synced) Spur\(synced == 1 ? "" : "en") per Timecode synchronisiert."
             : "Keine Tonspur trägt einen Timecode."
+        if !strays.isEmpty {
+            errorMessage = "Ganz ausserhalb des Bilds gelandet: \(strays.joined(separator: ", ")). "
+                + "Die Timecode-Basis passt vermutlich nicht — beim Film «Erstes Bild bei» prüfen (Stunde 1 gegen 00:00?)."
+        }
         reloadPlayer()
     }
 

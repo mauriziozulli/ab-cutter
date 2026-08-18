@@ -6,6 +6,9 @@ import SwiftUI
 struct SourcesPanel: View {
     @ObservedObject var state: AppState
 
+    @State private var timecodeText = ""
+    @State private var isEditingTimecode = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -40,9 +43,28 @@ struct SourcesPanel: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-                Text(videoTimecodeLine)
-                    .font(.caption)
-                    .foregroundStyle(state.project.videoTimecodeStartSeconds == nil ? Color.orange : Color.secondary)
+                // The film's start timecode, editable: a delivery without an
+                // embedded stamp still has a known base — mixes are stamped
+                // against the sequence, so typing that base here is all
+                // Auto-Sync needs.
+                HStack(spacing: 6) {
+                    Text("Erstes Bild bei")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("--:--:--:--", text: videoTimecodeBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(width: 96)
+                        .multilineTextAlignment(.center)
+                        .onSubmit { isEditingTimecode = false }
+                        .help("Timecode des ersten Bilds. Ohne eingebetteten Stempel hier setzen — 00:00:00:00 oder 01:00:00:00, je nachdem worauf die Mixe gestempelt sind.")
+                }
+
+                if state.project.videoTimecodeStartSeconds == nil {
+                    Text("Kein Timecode — für Auto-Sync oben eintragen, oder per Wellenform syncen.")
+                        .font(.caption2)
+                        .foregroundStyle(Color.orange)
+                }
 
                 HStack {
                     Picker("", selection: frameRateBinding) {
@@ -76,16 +98,34 @@ struct SourcesPanel: View {
         .abSection("Bild")
     }
 
-    private var videoTimecodeLine: String {
-        guard let start = state.project.videoTimecodeStartSeconds else {
-            return "Kein eingebetteter Timecode"
-        }
-        let formatted = Timecode.string(
-            fromSeconds: start,
-            rate: state.project.frameRate,
-            dropFrame: state.project.dropFrame
+    /// Shows the live start timecode unless the field is being typed into.
+    /// An emptied field clears the base; a parsed one becomes it, and every
+    /// timecode-stamped audio file can sync against it from then on.
+    private var videoTimecodeBinding: Binding<String> {
+        Binding(
+            get: {
+                if isEditingTimecode { return timecodeText }
+                guard let start = state.project.videoTimecodeStartSeconds else { return "" }
+                return Timecode.string(
+                    fromSeconds: start,
+                    rate: state.project.frameRate,
+                    dropFrame: state.project.dropFrame
+                )
+            },
+            set: { newValue in
+                isEditingTimecode = true
+                timecodeText = newValue
+                if newValue.trimmingCharacters(in: .whitespaces).isEmpty {
+                    state.project.videoTimecodeStartSeconds = nil
+                } else if let parsed = Timecode.seconds(
+                    fromString: newValue,
+                    rate: state.project.frameRate,
+                    dropFrame: state.project.dropFrame
+                ) {
+                    state.project.videoTimecodeStartSeconds = parsed
+                }
+            }
         )
-        return "Beginnt bei \(formatted)"
     }
 
     private var frameRateBinding: Binding<FrameRate> {
@@ -119,12 +159,16 @@ struct SourcesPanel: View {
             HStack {
                 Button("Ton hinzufügen …") { state.presentAudioPicker() }
                     .controlSize(.small)
+                // The modifiers below used to hang off the wrong button:
+                // «Wellenform» was disabled whenever the video had no
+                // timecode — exactly the situation waveform sync exists for.
                 Button("Auto-Sync") { state.autoSyncAll() }
-                Button("Wellenform") { state.alignAllByWaveform() }
-                    .help("Alle Mixe am Originalton des Videos ausrichten — der Zwei-Pop steckt schon im Film")
                     .controlSize(.small)
                     .disabled(state.project.videoTimecodeStartSeconds == nil)
-                    .help("Jede gestempelte Datei per eingebettetem Timecode aufs Bild legen")
+                    .help("Jede gestempelte Datei per Timecode aufs Bild legen — dazu oben den Start-Timecode des Films setzen")
+                Button("Wellenform") { state.alignAllByWaveform() }
+                    .controlSize(.small)
+                    .help("Alle Mixe am Originalton des Videos ausrichten — der Zwei-Pop steckt schon im Film")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -246,6 +290,12 @@ struct AudioSourceRow: View {
                 Text(source.channelDescription)
                 Text("·")
                 Text(Timecode.clockString(fromSeconds: source.durationSeconds))
+                if let stamp = source.timecodeStartSeconds {
+                    Text("·")
+                    // The file's own stamp, so the base the mixes are set
+                    // against can be read straight off the list.
+                    Text("TC \(Timecode.string(fromSeconds: stamp, rate: state.project.frameRate, dropFrame: state.project.dropFrame))")
+                }
                 Text("·")
                 Text(source.syncMode.title)
                     .foregroundStyle(
