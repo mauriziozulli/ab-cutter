@@ -33,6 +33,11 @@ struct TimelineView: View {
         var originStart: Double
         var originEnd: Double
         var originSplit: Double
+        /// Whether the clip was already selected when the mouse went down.
+        /// Captured here because the drag itself selects the clip at once —
+        /// judged at release, every clip would look "already selected" and a
+        /// click could never park the playhead at the clip's head again.
+        var wasSelected: Bool
         /// A drag that never really moved is a click, and a click on a clip
         /// should park the playhead at its head so its start is visible.
         var moved = false
@@ -407,7 +412,8 @@ struct TimelineView: View {
                 handle: handle,
                 originStart: clip.start,
                 originEnd: clip.end,
-                originSplit: nearestSwitch ?? clip.splitTime
+                originSplit: nearestSwitch ?? clip.splitTime,
+                wasSelected: clip.id == state.selectedClipID
             )
         }
         return nil
@@ -473,12 +479,13 @@ struct TimelineView: View {
                             // One rebuild at the end rather than one per pixel.
                             state.applyPlayerSettings()
                         } else if let clip = state.project.clips.first(where: { $0.id == finished.clipID }) {
-                            if clip.id == state.selectedClipID {
-                                // The clip is already selected: this click is
-                                // about the playhead, not the selection. The
-                                // first click parks at the head; every later
-                                // one is free — otherwise the playhead could
-                                // never be placed inside the clip at all.
+                            if finished.wasSelected {
+                                // The clip was already selected before this
+                                // click, so the click is about the playhead,
+                                // not the selection. The first click parks at
+                                // the head; every later one is free —
+                                // otherwise the playhead could never be
+                                // placed inside the clip at all.
                                 player.seek(to: seconds(forX: value.location.x, width: width))
                             } else {
                                 state.selectClip(clip)

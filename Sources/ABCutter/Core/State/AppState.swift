@@ -999,7 +999,92 @@ final class AppState: ObservableObject {
             startExport()
             return
         }
+
+        // The one mistake no meter catches in time: an A/B whose two sides
+        // carry the same sound. The file renders fine, the switch ramps
+        // fire — and nothing audible happens. Said out loud before the
+        // encode, not discovered on Instagram.
+        let warnings = silentSwitchWarnings()
+        if !warnings.isEmpty {
+            errorMessage = "Der Export läuft — aber bei diesen Clips wird am Wechsel nichts zu hören sein:\n\n"
+                + warnings.joined(separator: "\n")
+        }
+
         exportQueue.clear()
         exportQueue.start(project: project, outputFolder: folder)
+    }
+
+    // MARK: - Pre-flight
+
+    /// Clips whose A/B pair cannot produce an audible switch: both sides are
+    /// the same track, or the two tracks sound practically the same across
+    /// the clip. The second case is the classic trap — the film's embedded
+    /// track of a finished delivery IS the mix, so «Original (im Video)»
+    /// against that same mix as a file switches between two copies of one
+    /// sound, and all that is left to hear is their level difference.
+    private func silentSwitchWarnings() -> [String] {
+        var warnings: [String] = []
+        for clip in project.clips where clip.isEnabled {
+            guard let before = project.beforeSource(for: clip),
+                  let after = project.afterSource(for: clip) else { continue }
+
+            if before.id == after.id {
+                warnings.append("«\(clip.name)»: A und B sind dieselbe Spur (\(before.name)).")
+                continue
+            }
+
+            // Envelopes may still be extracting; no data, no verdict.
+            guard let waveBefore = waveforms[before.id],
+                  let waveAfter = waveforms[after.id] else { continue }
+            let similarity = pairSimilarity(
+                clip: clip,
+                before: before, waveBefore: waveBefore,
+                after: after, waveAfter: waveAfter
+            )
+            if similarity > 0.97 {
+                warnings.append(String(
+                    format: "«%@»: A (%@) und B (%@) klingen hier praktisch identisch (%.0f %%) — vermutlich derselbe Mix auf beiden Seiten.",
+                    clip.name, before.name, after.name, similarity * 100
+                ))
+            }
+        }
+        return warnings
+    }
+
+    /// Scale-invariant correlation of the two sides' loudness envelopes over
+    /// the clip window, each read at its own sync offset. Identical audio at
+    /// different levels still correlates near 1; a production track against
+    /// a finished mix — same dialogue, different everything else — does not.
+    private func pairSimilarity(
+        clip: Clip,
+        before: AudioSource, waveBefore: Waveform,
+        after: AudioSource, waveAfter: Waveform
+    ) -> Double {
+        let step = 0.05
+        var a: [Double] = []
+        var b: [Double] = []
+        var t = clip.start
+        while t < clip.end {
+            a.append(Double(waveBefore.peak(from: t - before.offsetSeconds, to: t - before.offsetSeconds + step)))
+            b.append(Double(waveAfter.peak(from: t - after.offsetSeconds, to: t - after.offsetSeconds + step)))
+            t += step
+        }
+        guard a.count >= 40 else { return 0 }
+
+        let meanA = a.reduce(0, +) / Double(a.count)
+        let meanB = b.reduce(0, +) / Double(b.count)
+        var dot = 0.0
+        var energyA = 0.0
+        var energyB = 0.0
+        for index in a.indices {
+            let x = a[index] - meanA
+            let y = b[index] - meanB
+            dot += x * y
+            energyA += x * x
+            energyB += y * y
+        }
+        let denominator = (energyA * energyB).squareRoot()
+        guard denominator > 0 else { return 0 }
+        return dot / denominator
     }
 }

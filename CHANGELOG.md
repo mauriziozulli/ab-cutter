@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.16.3 — the export warns before a switch that switches nothing
+
+- **Pre-flight check on every export.** For each enabled clip the app now
+  checks whether the A/B pair can produce an audible switch at all, and
+  says so before encoding when it cannot: A and B are the same track, or
+  the two tracks sound practically identical across the clip (loudness-
+  envelope correlation, scale-invariant — the same mix at two levels is
+  caught, a production track against a finished mix is not flagged).
+  The classic trap it names: a finished delivery's embedded track IS the
+  final mix, so «Original (im Video)» against that mix as a file switches
+  between two copies of one sound — all that changes is the level.
+- **Fixed: clicking a clip did not park the playhead at its head.** The
+  click's own drag gesture selected the clip the moment the mouse went
+  down, so at release every clip looked «already selected» and took the
+  free-playhead path. Whether the clip was selected is now captured before
+  the gesture selects it: the first click on a clip selects it and parks
+  the playhead at its start, further clicks inside place the playhead
+  freely — both behaviours as designed, at the same time.
+
 ## 0.16.2 — a synced track is a track you hear
 
 - **A waveform-synced mix now assigns itself to the B side** — as long as
