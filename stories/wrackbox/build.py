@@ -74,7 +74,7 @@ STORIES = [
         "crop": (0.50, 0.50),
         "blocks": [
             {"kind": "fett", "size": 62, "lines": [
-                "hey event people",
+                "hey event people!",
                 "i built a recording rig",
                 "for festivals.",
             ]},
@@ -312,7 +312,6 @@ def story_html(story: dict, count: int) -> str:
   <div class="plate">
     <div class="strip"><span>wrackbox mk1</span><span>{story['n']:02d} / {count:02d}</span></div>
     <div class="body">{blocks}</div>
-    <div class="foot"><div class="address">soundmatters.audio</div></div>
   </div>
 </div>"""
 
