@@ -59,19 +59,27 @@ def blur_px(strength: float) -> float:
 
 # MARK: - The series
 
+# Two voices, not five. The lead face carries the sentence, the mono carries
+# everything small — the strip, the list, the foot. There is one size per
+# story, and the accent is a colour, never a second size: as soon as a slide
+# holds three sizes it stops reading as one piece of print.
+#
+# The size is set by the longest line, since a line that wraps breaks the
+# rhythm of the block: roughly 962 / (characters * 0.667) at this margin.
+
 STORIES = [
     {
         "n": 1,
         "photo": "rack-front-stage.jpg",
         "crop": (0.50, 0.50),
         "blocks": [
-            {"kind": "fett", "size": 66, "lines": [
+            {"kind": "fett", "size": 62, "lines": [
                 "hey event people",
                 "i built a recording rig",
                 "for festivals.",
             ]},
-            {"kind": "bar", "size": 82, "text": "wrackbox mk1"},
-            {"kind": "serif", "size": 46, "lines": ["here’s what it does →"]},
+            {"kind": "bar", "size": 78, "text": "wrackbox mk1"},
+            {"kind": "note", "text": "here’s what it does →"},
         ],
     },
     {
@@ -81,17 +89,17 @@ STORIES = [
         "blur": 9,
         "dim": 0.46,
         "blocks": [
-            {"kind": "fett", "size": 56, "lines": [
+            {"kind": "fett", "size": 48, "lines": [
                 "recording a whole festival",
                 "is a babysitting job.",
             ]},
-            {"kind": "fett", "size": 44, "colour": KNOCHEN, "lines": [
+            {"kind": "fett", "size": 48, "lines": [
                 "someone checks the laptop",
                 "between sets.",
                 "someone swaps the card at 3am.",
                 "someone hopes the power holds.",
             ]},
-            {"kind": "fett", "size": 50, "colour": OCKER, "lines": [
+            {"kind": "fett", "size": 48, "accent": True, "lines": [
                 "and usually that someone",
                 "is you.",
             ]},
@@ -102,12 +110,13 @@ STORIES = [
         "photo": "rack-closed-back.jpg",
         "crop": (0.52, 0.50),
         "blocks": [
-            {"kind": "fett", "size": 62, "lines": [
+            {"kind": "fett", "size": 48, "lines": [
                 "so i built a box",
                 "that doesn’t need you.",
             ]},
-            {"kind": "mono", "size": 32, "colour": OCKER, "lines": [
-                "plug in power. plug in audio. walk away.",
+            {"kind": "fett", "size": 48, "accent": True, "lines": [
+                "plug in power. plug in audio.",
+                "walk away.",
             ]},
             {"kind": "fett", "size": 48, "lines": [
                 "it records the entire weekend",
@@ -120,13 +129,14 @@ STORIES = [
         "photo": "rack-open-workshop.jpg",
         "crop": (0.52, 0.50),
         "blocks": [
-            {"kind": "fett", "size": 52, "lines": [
+            {"kind": "fett", "size": 40, "lines": [
                 "the timetable goes in once.",
             ]},
-            {"kind": "serif", "size": 40, "lines": [
-                "all three days · every slot, every break.",
+            {"kind": "fett", "size": 40, "accent": True, "lines": [
+                "all three days — every slot,",
+                "every break.",
             ]},
-            {"kind": "fett", "size": 44, "lines": [
+            {"kind": "fett", "size": 40, "lines": [
                 "the box follows the plan by itself.",
                 "records what should be recorded,",
                 "stays quiet when nothing’s on.",
@@ -164,8 +174,8 @@ STORIES = [
                 "four stages. four boxes.",
                 "one timetable.",
             ]},
-            {"kind": "bar", "size": 74, "text": "wrackbox mk1"},
-            {"kind": "serif", "size": 42, "lines": ["DM me if you run stages."]},
+            {"kind": "bar", "size": 72, "text": "wrackbox mk1"},
+            {"kind": "note", "text": "DM me if you run stages."},
         ],
     },
 ]
@@ -185,9 +195,11 @@ def font_face(name: str, file: str) -> str:
     )
 
 
+# Two of the three house faces. The didone is deliberately left out here: on
+# a photograph at story size its hairlines break away, and a third voice is
+# what made the first set read as five different posts.
 FACES = "".join([
     font_face("Archivo Black", "ArchivoBlack-Regular.ttf"),
-    font_face("Bodoni Moda", "BodoniModa-Bold.ttf"),
     font_face("Space Mono", "SpaceMono-Bold.ttf"),
 ])
 
@@ -230,12 +242,13 @@ html,body{{width:{W}px;height:{H}px;background:{TINTE};overflow:hidden}}
 .body{{flex:1;display:flex;flex-direction:column;justify-content:center;
   align-items:center;text-align:center;gap:46px;padding:60px 0}}
 
+/* The lead: one size per story, bone, or ocker where a line carries the turn. */
 .fett{{font-family:'Archivo Black','Arial Black',sans-serif;text-transform:uppercase;
   letter-spacing:-.045em;line-height:1.06;color:{KNOCHEN}}}
-.serif{{font-family:'Bodoni Moda',Didot,serif;letter-spacing:-.015em;line-height:1.2;
-  color:rgba(239,230,210,.82)}}
-.mono{{font-family:'Space Mono',monospace;text-transform:uppercase;letter-spacing:.14em;
-  line-height:1.5;color:{KNOCHEN}}}
+.fett.accent{{color:{OCKER}}}
+/* The small type: the strip, the list, the note, the foot — nothing else. */
+.note{{font-family:'Space Mono',monospace;text-transform:uppercase;letter-spacing:.14em;
+  font-size:28px;line-height:1.5;color:rgba(239,230,210,.66)}}
 
 /* The bar: a field in the accent with a hard contour in ink — CardRenderer.drawBar. */
 .bar{{display:inline-block;font-family:'Archivo Black','Arial Black',sans-serif;
@@ -264,16 +277,11 @@ html,body{{width:{W}px;height:{H}px;background:{TINTE};overflow:hidden}}
 def block_html(block: dict) -> str:
     kind = block["kind"]
     if kind == "fett":
-        colour = block.get("colour", KNOCHEN)
+        accent = " accent" if block.get("accent") else ""
         lines = "<br>".join(block["lines"])
-        return f'<div class="fett" style="font-size:{block["size"]}px;color:{colour}">{lines}</div>'
-    if kind == "serif":
-        lines = "<br>".join(block["lines"])
-        return f'<div class="serif" style="font-size:{block["size"]}px">{lines}</div>'
-    if kind == "mono":
-        colour = block.get("colour", KNOCHEN)
-        lines = "<br>".join(block["lines"])
-        return f'<div class="mono" style="font-size:{block["size"]}px;color:{colour}">{lines}</div>'
+        return f'<div class="fett{accent}" style="font-size:{block["size"]}px">{lines}</div>'
+    if kind == "note":
+        return f'<div class="note">{block["text"]}</div>'
     if kind == "bar":
         return f'<div><span class="bar" style="font-size:{block["size"]}px">{block["text"]}</span></div>'
     if kind == "list":
