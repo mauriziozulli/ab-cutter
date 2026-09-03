@@ -182,8 +182,8 @@ STORIES = [
                 "remote status and control over LTE, from anywhere",
             ]},
             {"kind": "fett", "size": 52, "lines": [
-                "four stages. four boxes.",
-                "one timetable.",
+                "one timetable. one weekend.",
+                "no babysitter.",
             ]},
             {"kind": "bar", "size": 72, "text": "wrackbox mk1"},
             {"kind": "note", "text": "DM me if you run stages."},
