@@ -83,7 +83,18 @@ STORIES = [
         ],
     },
     {
+        # The one slide that is only the machine: sharp, no scrim, no type.
+        # After the hook the viewer wants to see the thing before being told
+        # anything more about it.
         "n": 2,
+        "photo": "rack-front-stage.jpg",
+        "crop": (0.55, 0.54),
+        "zoom": 1.28,
+        "plain": True,
+        "blocks": [],
+    },
+    {
+        "n": 3,
         "photo": "bench-build.jpg",
         "crop": (0.50, 0.50),
         "blur": 9,
@@ -106,7 +117,7 @@ STORIES = [
         ],
     },
     {
-        "n": 3,
+        "n": 4,
         "photo": "rack-closed-back.jpg",
         "crop": (0.52, 0.50),
         "blocks": [
@@ -125,7 +136,7 @@ STORIES = [
         ],
     },
     {
-        "n": 4,
+        "n": 5,
         "photo": "rack-open-workshop.jpg",
         "crop": (0.52, 0.50),
         "blocks": [
@@ -144,10 +155,10 @@ STORIES = [
         ],
     },
     {
-        "n": 5,
+        "n": 6,
         "photo": "rack-front-stage.jpg",
-        "crop": (0.58, 0.56),
-        "zoom": 1.35,
+        "crop": (0.34, 0.56),
+        "zoom": 1.9,
         "blur": 9,
         "dim": 0.48,
         "blocks": [
@@ -160,7 +171,7 @@ STORIES = [
         ],
     },
     {
-        "n": 6,
+        "n": 7,
         "photo": "rack-back-stage.jpg",
         "crop": (0.45, 0.50),
         "blur": 9,
@@ -222,6 +233,7 @@ html,body{{width:{W}px;height:{H}px;background:{TINTE};overflow:hidden}}
    sit on it — StillExporter.titleCard. */
 .ground{{position:absolute;inset:-70px;background-size:cover;background-position:center;
   background-repeat:no-repeat}}
+.ground.sharp{{inset:0}}
 .scrim{{position:absolute;inset:0}}
 /* The website's ::after — a radial darkening that keeps type readable. */
 .veil{{position:absolute;inset:0;background:radial-gradient(ellipse 70% 60% at 50% 46%,
@@ -303,6 +315,15 @@ def story_html(story: dict, count: int) -> str:
     photo = data_uri(PHOTOS / f"story-{story['n']:02d}.jpg")
     blur = blur_px(story.get("blur", BLUR))
     dim = story.get("dim", DIM)
+    if story.get("plain"):
+        # Nothing is softened, dimmed or written over: only the grain, so the
+        # slide still belongs to the series.
+        return f"""<!doctype html><meta charset="utf-8"><style>{CSS}</style>
+<div class="canvas">
+  <div class="ground sharp" style="background-image:url('{photo}')"></div>
+  <div class="grain"></div>
+</div>"""
+
     blocks = "".join(block_html(b) for b in story["blocks"])
     return f"""<!doctype html><meta charset="utf-8"><style>{CSS}</style>
 <div class="canvas">

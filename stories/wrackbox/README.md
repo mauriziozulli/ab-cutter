@@ -45,12 +45,17 @@ ohne Mac läuft. Die App bleibt der einzige Renderer, der ausgeliefert wird.
 | # | Inhalt | Foto |
 | --- | --- | --- |
 | 1 | Hook | Rack von vorn, Bühne |
-| 2 | Das Problem | Werkbank im Bau |
-| 3 | Die Idee | Rack zu, von hinten |
-| 4 | Timetable | Rack offen, Werkstatt |
-| 5 | Robustheit | Front, enger Ausschnitt |
-| 6 | Integration + Close | Rückseite mit XLR, Bühne |
-| 7 | Endkarte | Tinte, ohne Bild |
+| 2 | Nur der Recorder | Front, scharf, ohne Text |
+| 3 | Das Problem | Werkbank im Bau |
+| 4 | Die Idee | Rack zu, von hinten |
+| 5 | Timetable | Rack offen, Werkstatt |
+| 6 | Robustheit | Kartenschächte, enger Ausschnitt |
+| 7 | Integration + Close | Rückseite mit XLR, Bühne |
+| 8 | Endkarte | Tinte, ohne Bild |
+
+Slide 2 ist der einzige ohne Weichzeichnung, ohne Abdunklung und ohne Typo:
+nach dem Hook will man die Kiste sehen, bevor man mehr darüber liest. Die
+Fußzeile tragen nur noch die Schlusskarte.
 
 Story 2 ist der wichtigste Slide — Problem vor Produkt. Textmenge pro Story
 nicht erhöhen.
