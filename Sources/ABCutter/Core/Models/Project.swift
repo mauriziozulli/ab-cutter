@@ -771,10 +771,13 @@ struct StillSettings: Codable, Hashable {
 
     // MARK: - Marker stills
 
-    /// Besides one image per marker, lay all of them out on one contact sheet.
-    var saveContactSheet: Bool = true
-    /// Columns of that sheet, 2 … 5.
-    var contactSheetColumns: Int = 3
+    /// Per marker: the untouched frame at the film's full resolution.
+    var markerOriginal: Bool = true
+    /// Per marker: a JPEG for a website, 2560 px on the long edge, sRGB.
+    var markerWeb: Bool = true
+    /// Per marker: a crop for each selected social format, up to twice its
+    /// nominal size (4:5 → 2160×2700), JPEG, sRGB.
+    var markerSocial: Bool = true
 
     // MARK: - The end card
 
@@ -812,10 +815,9 @@ struct StillSettings: Codable, Hashable {
         if let value = try? box.decode(Bool.self, forKey: .saveFullFrame) { saveFullFrame = value }
         if let value = try? box.decode(Bool.self, forKey: .saveTitleCards) { saveTitleCards = value }
         if let value = try? box.decode(StillFileFormat.self, forKey: .fileFormat) { fileFormat = value }
-        if let value = try? box.decode(Bool.self, forKey: .saveContactSheet) { saveContactSheet = value }
-        if let value = try? box.decode(Int.self, forKey: .contactSheetColumns) {
-            contactSheetColumns = min(max(value, 2), 5)
-        }
+        if let value = try? box.decode(Bool.self, forKey: .markerOriginal) { markerOriginal = value }
+        if let value = try? box.decode(Bool.self, forKey: .markerWeb) { markerWeb = value }
+        if let value = try? box.decode(Bool.self, forKey: .markerSocial) { markerSocial = value }
         if let value = try? box.decode(Bool.self, forKey: .saveEndCard) { saveEndCard = value }
         if let value = try? box.decode(String.self, forKey: .endWordmarkTop) { endWordmarkTop = value }
         if let value = try? box.decode(String.self, forKey: .endWordmarkBar) { endWordmarkBar = value }

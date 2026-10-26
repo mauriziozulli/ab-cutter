@@ -127,13 +127,13 @@ func run() throws {
     // film order, and an older project without any simply has none.
     var marked = ABProject()
     marked.stillMarkers = [StillMarker(time: 42), StillMarker(time: 7.5)]
-    marked.stills.contactSheetColumns = 4
+    marked.stills.markerWeb = false
     let markedBack = try JSONDecoder().decode(
         Document.self, from: JSONEncoder().encode(Document(version: 1, project: marked))
     ).project
     check(markedBack.stillMarkers.count == 2, "A round trip lost the still markers.")
     check(markedBack.sortedStillMarkers.map(\.time) == [7.5, 42], "Markers are not in film order.")
-    check(markedBack.stills.contactSheetColumns == 4, "A round trip lost the contact-sheet columns.")
+    check(markedBack.stills.markerWeb == false, "A round trip lost a marker-still option.")
     check(old.project.stillMarkers.isEmpty, "A legacy project invented markers.")
 
     // Loop semantics: no switches inside the selection — the boundary lies

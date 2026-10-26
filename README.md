@@ -134,8 +134,8 @@ delivery.
 
 **Stills from markers.** `+ Still` (or ⇧⌘M) sets a marker at the playhead.
 Markers sit on their own lane under the ruler and slide freely — the picture
-follows the drag. The Stills tab renders one full-resolution image per marker
-and, if wanted, a contact sheet of all of them (⌥⌘G).
+follows the drag. The Stills tab renders the original at film resolution per marker
+plus, if wanted, a website JPEG and a crop per social format (⌥⌘G).
 
 Everything is also in the menu bar with a shortcut. Transport is ⌘J / ⌘K / ⌘L
 for back a frame, play, forward a frame, with Shift for ten. ⌘N drops an A/B

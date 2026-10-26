@@ -90,8 +90,9 @@ extension AppState {
 
     // MARK: - Rendering
 
-    /// Reads the frame behind every marker at full resolution, writes one image
-    /// each, and — when asked — a contact sheet of all of them.
+    /// Reads the frame behind every marker at full resolution and writes what
+    /// is switched on: the original, a website JPEG, and one crop per selected
+    /// social format.
     func renderMarkerStills() {
         guard let url = project.videoURL else {
             errorMessage = "Zuerst ein Video laden."
@@ -102,6 +103,12 @@ extension AppState {
             errorMessage = "Zuerst Marker setzen: + in der Zeitleiste."
             return
         }
+        let settings = project.stills
+        let formats = settings.markerSocial ? project.export.formats : []
+        guard settings.markerOriginal || settings.markerWeb || !formats.isEmpty else {
+            errorMessage = "Es ist nichts zum Rendern ausgewählt."
+            return
+        }
         guard !isExportingStills else { return }
         guard let folder = project.export.outputFolderURL else {
             chooseOutputFolder()
@@ -110,49 +117,45 @@ extension AppState {
             return
         }
 
-        let settings = project.stills
         let projectName = project.name
-        let steps = Double(markers.count + (settings.saveContactSheet ? 1 : 0))
         isExportingStills = true
         stillExportProgress = 0
         status = "Rendere \(markers.count) Still\(markers.count == 1 ? "" : "s") …"
 
         Task { [weak self] in
             guard let self else { return }
-            var thumbnails: [(image: CGImage, label: String)] = []
             var written = 0
             do {
                 for (index, marker) in markers.enumerated() {
                     let frame = try await StillExporter.grab(videoURL: url, at: marker.time)
-                    let timecode = self.markerTimecode(marker.time)
-                    let stamp = timecode
+                    let stamp = self.markerTimecode(marker.time)
                         .replacingOccurrences(of: ":", with: "-")
                         .replacingOccurrences(of: ";", with: "-")
-                    let file = folder.appendingPathComponent(
-                        "\(projectName)_still-\(String(format: "%02d", index + 1))_\(stamp).\(settings.fileFormat.fileExtension)"
-                    )
-                    try StillExporter.write(frame, to: file, as: settings.fileFormat)
-                    written += 1
+                    let base = "\(projectName)_still-\(String(format: "%02d", index + 1))_\(stamp)"
 
-                    if settings.saveContactSheet,
-                       let thumb = StillExporter.thumbnail(frame, maxWidth: 960) {
-                        thumbnails.append((thumb, "\(index + 1)   \(timecode)"))
+                    if settings.markerOriginal {
+                        try StillExporter.write(
+                            frame,
+                            to: folder.appendingPathComponent("\(base)_original.\(settings.fileFormat.fileExtension)"),
+                            as: settings.fileFormat
+                        )
+                        written += 1
                     }
-                    self.stillExportProgress = Double(index + 1) / steps
-                }
-
-                if settings.saveContactSheet, !thumbnails.isEmpty {
-                    guard let sheet = StillExporter.contactSheet(
-                        cells: thumbnails,
-                        columns: settings.contactSheetColumns,
-                        title: projectName
-                    ) else { throw StillError.renderFailed }
-                    let file = folder.appendingPathComponent(
-                        "\(projectName)_stills-uebersicht.\(settings.fileFormat.fileExtension)"
-                    )
-                    try StillExporter.write(sheet, to: file, as: settings.fileFormat)
-                    written += 1
-                    self.stillExportProgress = 1
+                    if settings.markerWeb,
+                       let web = StillExporter.resized(frame, longEdge: StillExporter.webLongEdge) {
+                        try StillExporter.write(
+                            web, to: folder.appendingPathComponent("\(base)_web.jpg"), as: .jpeg
+                        )
+                        written += 1
+                    }
+                    for format in formats {
+                        guard let crop = StillExporter.social(frame: frame, format: format) else { continue }
+                        try StillExporter.write(
+                            crop, to: folder.appendingPathComponent("\(base)_\(format.fileSuffix).jpg"), as: .jpeg
+                        )
+                        written += 1
+                    }
+                    self.stillExportProgress = Double(index + 1) / Double(markers.count)
                 }
             } catch {
                 self.isExportingStills = false

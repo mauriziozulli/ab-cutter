@@ -13,10 +13,11 @@
   ruler on their own lane: drag one to slide it (frame-accurate, and the
   picture follows), click to select, ⌥⌘⌫ removes, ⌥⌘←/→ jump between them.
 - **Rendering from the markers.** The new *Stills* tab lists them and
-  renders one image per marker at full film resolution plus, optionally, a
-  contact sheet of all of them (2–5 columns, ink ground, number and
-  timecode under each frame) — ⌥⌘G or the button. Markers are saved with the
-  project; projects without any open unchanged.
+  renders, per marker: the original at full film resolution, a website JPEG
+  (2560 px long edge, sRGB) and one crop for each selected social format
+  (4:5, 9:16, 1:1, 16:9) at up to twice its nominal size. Nothing is ever
+  enlarged. ⌥⌘G or the button. Markers are saved with the project; projects
+  without any open unchanged.
 
 ## 0.19.0 — the timeline answers the hand
 

@@ -97,28 +97,46 @@ struct MarkerStillsPanel: View {
 
     // MARK: - Output
 
+    private func option(_ title: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title).font(style.ui(AppType.small + 1, weight: .medium))
+            Text(detail).font(style.ui(AppType.small)).foregroundStyle(style.muted)
+        }
+    }
+
+    /// What the social crops will be called, e.g. "4:5, 9:16 — JPEG, bis 2× Nenngrösse".
+    private var socialSummary: String {
+        let formats = state.project.export.formats.map(\.title).joined(separator: ", ")
+        return (formats.isEmpty ? "kein Format gewählt" : formats) + " — JPEG, bis 2× Nenngrösse"
+    }
+
     private var outputSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Toggle("Übersichtsbild aus allen Markern", isOn: state.stillBinding(\.saveContactSheet))
-                .toggleStyle(.checkbox)
-                .font(style.ui(AppType.small + 1))
+            Toggle(isOn: state.stillBinding(\.markerOriginal)) {
+                option("Original", "Volle Filmauflösung, unbearbeitet")
+            }
+            .toggleStyle(.checkbox)
 
-            if state.project.stills.saveContactSheet {
-                Picker("Spalten", selection: state.stillBinding(\.contactSheetColumns)) {
-                    ForEach(2...5, id: \.self) { Text("\($0)").tag($0) }
+            if state.project.stills.markerOriginal {
+                Picker("Datei", selection: state.stillBinding(\.fileFormat)) {
+                    ForEach(StillFileFormat.allCases) { format in
+                        Text(format.title).tag(format)
+                    }
                 }
-                .pickerStyle(.segmented)
                 .controlSize(.small)
             }
 
-            Picker("Datei", selection: state.stillBinding(\.fileFormat)) {
-                ForEach(StillFileFormat.allCases) { format in
-                    Text(format.title).tag(format)
-                }
+            Toggle(isOn: state.stillBinding(\.markerWeb)) {
+                option("Webseite", "JPEG, lange Kante \(StillExporter.webLongEdge) px, sRGB")
             }
-            .controlSize(.small)
+            .toggleStyle(.checkbox)
 
-            Text("Jeder Marker wird in voller Filmauflösung geschrieben, dazu auf Wunsch ein Übersichtsbild. Ablage im Zielordner des Exports.")
+            Toggle(isOn: state.stillBinding(\.markerSocial)) {
+                option("Social Media", socialSummary)
+            }
+            .toggleStyle(.checkbox)
+
+            Text("Formate wählst du im Export-Tab. Nie hochgerechnet: ein Still ist so scharf wie der Film. Ablage im Zielordner des Exports.")
                 .font(style.ui(AppType.small))
                 .foregroundStyle(style.muted)
                 .fixedSize(horizontal: false, vertical: true)
