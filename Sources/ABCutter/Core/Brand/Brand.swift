@@ -1,6 +1,7 @@
 import AppKit
 import CoreImage
 import Foundation
+import SwiftUI
 
 /// The Sound Matters palette, taken from `tokens.css` in the website repo.
 ///
@@ -74,6 +75,10 @@ enum Brand {
 
         var nsColor: NSColor {
             NSColor(srgbRed: red, green: green, blue: blue, alpha: alpha)
+        }
+
+        var swiftUIColor: Color {
+            Color(.sRGB, red: red, green: green, blue: blue, opacity: alpha)
         }
 
         var ciColor: CIColor {

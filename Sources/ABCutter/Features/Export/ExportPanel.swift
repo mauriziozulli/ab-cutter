@@ -203,7 +203,7 @@ struct ExportPanel: View {
                 Button(queue.isRunning ? "Exportiere …" : "Stapel exportieren") {
                     state.startExport()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(StudioButtonStyle(kind: .primary))
                 .disabled(queue.isRunning || plannedFileCount == 0)
 
                 if queue.isRunning {

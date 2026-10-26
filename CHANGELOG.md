@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.20.0 — Studio faceplate, still markers
+
+- **The look is Paranoid Projects'.** The Studio faceplate (night graphite,
+  one system-blue accent, depth instead of borders, sentence-case
+  headings, system-face readouts) is restated in `Theme/StudioStyle.swift`
+  and `Theme/StudioComponents.swift`; `Theme` now reads its chrome from it,
+  so every panel, button and card follows. Paranoid Projects' copy is the
+  source — change it there first. `Core/Brand` still dresses the exports.
+- **Still markers.** `+ Still` in the timeline header, the toolbar, the
+  Stills tab or ⇧⌘M sets a marker at the playhead. Markers hang from the
+  ruler on their own lane: drag one to slide it (frame-accurate, and the
+  picture follows), click to select, ⌥⌘⌫ removes, ⌥⌘←/→ jump between them.
+- **Rendering from the markers.** The new *Stills* tab lists them and
+  renders one image per marker at full film resolution plus, optionally, a
+  contact sheet of all of them (2–5 columns, ink ground, number and
+  timecode under each frame) — ⌥⌘G or the button. Markers are saved with the
+  project; projects without any open unchanged.
+
 ## 0.19.0 — the timeline answers the hand
 
 - **Fixed: a text field kept the keyboard forever.** Clicking into the

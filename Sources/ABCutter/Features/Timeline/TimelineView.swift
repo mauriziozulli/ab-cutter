@@ -15,6 +15,7 @@ struct TimelineView: View {
     @ObservedObject var player: PlayerController
 
     private let rulerHeight: CGFloat = 22
+    private let markerLaneHeight: CGFloat = 22
     private let clipLaneHeight: CGFloat = 26
     private let laneHeight: CGFloat = 40
 
@@ -40,6 +41,21 @@ struct TimelineView: View {
 
     @State private var clipDrag: ClipDrag?
 
+    /// A drag on the marker lane: which marker it grabbed and where that
+    /// marker started, so every delta is measured from the same origin.
+    private struct MarkerDrag {
+        var id: UUID
+        var originTime: Double
+        var moved = false
+    }
+
+    @State private var markerDrag: MarkerDrag?
+
+    @Environment(\.studioStyle) private var style
+
+    /// Top of the clip lane: ruler, then the marker lane.
+    private var clipLaneTop: CGFloat { rulerHeight + markerLaneHeight }
+
     /// Seconds covered by the whole visible strip.
     private var visibleDuration: Double {
         max(state.project.timelineDuration / max(state.zoom, 1), 1)
@@ -56,7 +72,7 @@ struct TimelineView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
+            StudioHairline(soft: true)
             GeometryReader { geometry in
                 let width = max(geometry.size.width, 1)
                 ZStack(alignment: .topLeading) {
@@ -71,12 +87,12 @@ struct TimelineView: View {
                 }
             }
             .frame(height: totalHeight)
-            .background(Theme.panelBackground)
+            .background(style.bg)
         }
     }
 
     private var totalHeight: CGFloat {
-        rulerHeight + clipLaneHeight + laneHeight * CGFloat(max(visibleSources.count, 1)) + 8
+        rulerHeight + markerLaneHeight + clipLaneHeight + laneHeight * CGFloat(max(visibleSources.count, 1)) + 8
     }
 
     private var visibleSources: [AudioSource] {
@@ -88,29 +104,43 @@ struct TimelineView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Text("Zeitleiste")
-                .font(.system(size: 10, weight: .semibold))
-                .kerning(0.6)
-                .foregroundStyle(.secondary)
+                .font(style.ui(AppType.body, weight: .semibold))
+                .foregroundStyle(style.text)
+
+            Button { state.addStillMarkerAtPlayhead() } label: {
+                Label("Still", systemImage: "plus")
+            }
+            .buttonStyle(StudioButtonStyle())
+            .controlSize(.small)
+            .disabled(!state.project.hasVideo)
+            .help("Still-Marker am Abspielkopf setzen (⇧⌘M) — in der Zeitleiste verschiebbar")
+
+            if !state.project.stillMarkers.isEmpty {
+                Text("\(state.project.stillMarkers.count) Marker")
+                    .font(style.mono(AppType.small))
+                    .foregroundStyle(Theme.stillTint)
+            }
 
             Spacer()
 
             Image(systemName: "minus.magnifyingglass")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+                .font(.system(size: AppType.small))
+                .foregroundStyle(style.faint)
             Slider(value: $state.zoom, in: 1...400)
                 .controlSize(.mini)
                 .frame(width: 150)
             Image(systemName: "plus.magnifyingglass")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+                .font(.system(size: AppType.small))
+                .foregroundStyle(style.faint)
 
             Text(zoomLabel)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .font(style.mono(AppType.small))
+                .foregroundStyle(style.faint)
                 .frame(width: 70, alignment: .trailing)
         }
         .padding(.horizontal, Theme.panelPadding)
-        .padding(.vertical, 5)
+        .frame(height: style.barHeight)
+        .background(style.panel)
     }
 
     private var zoomLabel: String {
@@ -135,9 +165,10 @@ struct TimelineView: View {
     private func draw(context: GraphicsContext, size: CGSize) {
         let width = size.width
         drawRuler(context: context, width: width)
+        drawMarkerLane(context: context, width: width)
         drawClipLane(context: context, width: width)
 
-        var y = rulerHeight + clipLaneHeight
+        var y = clipLaneTop + clipLaneHeight
         for source in visibleSources {
             drawLane(context: context, source: source, width: width, top: y)
             y += laneHeight
@@ -168,7 +199,7 @@ struct TimelineView: View {
                 context.draw(
                     Text(label)
                         .font(.system(size: 9, design: .monospaced))
-                        .foregroundColor(.secondary),
+                        .foregroundColor(style.faint),
                     at: CGPoint(x: position + 3, y: 8),
                     anchor: .leading
                 )
@@ -184,8 +215,44 @@ struct TimelineView: View {
         return candidates.first { $0 >= target } ?? 3600
     }
 
+    /// One flag per still marker, hanging from the ruler, and a thin line down
+    /// through the lanes so the frame it will read can be lined up with the
+    /// audio underneath.
+    private func drawMarkerLane(context: GraphicsContext, width: CGFloat) {
+        let tint = Theme.stillTint
+        let markers = state.project.sortedStillMarkers
+
+        for (index, marker) in markers.enumerated() {
+            let position = x(for: marker.time, width: width)
+            guard position >= -10, position <= width + 10 else { continue }
+            let isSelected = marker.id == state.selectedMarkerID
+
+            context.stroke(
+                Path { path in
+                    path.move(to: CGPoint(x: position, y: rulerHeight))
+                    path.addLine(to: CGPoint(x: position, y: totalHeight))
+                },
+                with: .color(tint.opacity(isSelected ? 0.7 : 0.28)),
+                style: StrokeStyle(lineWidth: 1, dash: isSelected ? [] : [2, 3])
+            )
+
+            let flag = CGRect(x: position - 9, y: rulerHeight + 2, width: 18, height: markerLaneHeight - 6)
+            let shape = Path(roundedRect: flag, cornerRadius: 4)
+            context.fill(shape, with: .color(isSelected ? tint : tint.opacity(0.55)))
+            if isSelected {
+                context.stroke(shape, with: .color(.white), lineWidth: 1.5)
+            }
+            context.draw(
+                Text("\(index + 1)")
+                    .font(.system(size: 9, weight: .bold).monospacedDigit())
+                    .foregroundColor(Brand.tinte.swiftUIColor),
+                at: CGPoint(x: flag.midX, y: flag.midY)
+            )
+        }
+    }
+
     private func drawClipLane(context: GraphicsContext, width: CGFloat) {
-        let top = rulerHeight + 2
+        let top = clipLaneTop + 2
         let height = clipLaneHeight - 4
 
         for clip in state.project.clips {
@@ -435,6 +502,57 @@ struct TimelineView: View {
         }
     }
 
+    /// The marker lane: drag a flag to slide the marker — the picture follows,
+    /// so the frame is seen while it is chosen. A click on a flag selects it
+    /// and parks the playhead there; empty space scrubs.
+    private func markerLaneStrip(width: CGFloat) -> some View {
+        Color.clear
+            .frame(height: markerLaneHeight)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if markerDrag == nil {
+                            TimelineView.releaseKeyboardFocus()
+                            markerDrag = markerUnder(x: value.startLocation.x, width: width)
+                            if let grabbed = markerDrag {
+                                state.selectedMarkerID = grabbed.id
+                            }
+                        }
+                        guard let grabbed = markerDrag else {
+                            player.seek(to: seconds(forX: value.location.x, width: width))
+                            return
+                        }
+                        if abs(value.translation.width) > 3 {
+                            markerDrag?.moved = true
+                        }
+                        guard markerDrag?.moved == true else { return }
+                        let delta = Double(value.translation.width / max(width, 1)) * visibleDuration
+                        let time = grabbed.originTime + delta
+                        state.moveStillMarker(grabbed.id, to: time)
+                        player.seek(to: time)
+                    }
+                    .onEnded { _ in
+                        guard let finished = markerDrag else { return }
+                        markerDrag = nil
+                        if !finished.moved {
+                            state.selectStillMarker(finished.id)
+                        }
+                    }
+            )
+    }
+
+    /// The marker whose flag lies under `x`, nearest first. The flag is 18
+    /// points wide; a little slop on top makes it easy to catch at any zoom.
+    private func markerUnder(x position: CGFloat, width: CGFloat) -> MarkerDrag? {
+        let slop = Double(11 / max(width, 1)) * visibleDuration
+        let time = seconds(forX: position, width: width)
+        let hit = state.project.stillMarkers
+            .filter { abs($0.time - time) <= slop }
+            .min { abs($0.time - time) < abs($1.time - time) }
+        return hit.map { MarkerDrag(id: $0.id, originTime: $0.time) }
+    }
+
     /// The clip lane: drag a body to move it, an edge to trim, the dashed mark
     /// to move the A/B switch. Empty space scrubs.
     private func clipLaneStrip(width: CGFloat) -> some View {
@@ -486,6 +604,7 @@ struct TimelineView: View {
     private func laneDragOverlay(width: CGFloat) -> some View {
         VStack(spacing: 0) {
             Spacer().frame(height: rulerHeight)
+            markerLaneStrip(width: width)
             clipLaneStrip(width: width)
             ForEach(visibleSources) { source in
                 LaneDragStrip(
@@ -507,7 +626,7 @@ struct TimelineView: View {
     private func playheadOverlay(width: CGFloat) -> some View {
         let position = x(for: player.currentTime, width: width)
         return Rectangle()
-            .fill(Color.red)
+            .fill(style.error)
             .frame(width: 1.5, height: totalHeight)
             .offset(x: position)
             .opacity(position >= 0 && position <= width ? 1 : 0)

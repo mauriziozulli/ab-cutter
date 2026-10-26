@@ -10,6 +10,11 @@ import UniformTypeIdentifiers
 final class AppState: ObservableObject {
     @Published var project = ABProject()
     @Published var selectedClipID: UUID?
+    /// The still marker last placed, grabbed or listed.
+    @Published var selectedMarkerID: UUID?
+    /// True while the marker stills are being read and written.
+    @Published var isExportingStills = false
+    @Published var stillExportProgress: Double = 0
     @Published var status: String = "Zum Start ein Video laden."
     @Published var errorMessage: String?
     @Published private(set) var isLoadingMedia = false

@@ -127,9 +127,15 @@ matrix is encoded sequentially with per-file progress.
 ## Getting around
 
 The window is three columns: audio layers on the left, the picture and
-timeline in the middle, and a three-tab inspector on the right — **Clips**,
-**Cover**, **Export**. The look sits under each clip, because it belongs to
-the clip; the Export tab holds only what is decided once per delivery.
+timeline in the middle, and a four-tab inspector on the right — **Clips**,
+**Titelbild**, **Stills**, **Export**. The look sits under each clip, because
+it belongs to the clip; the Export tab holds only what is decided once per
+delivery.
+
+**Stills from markers.** `+ Still` (or ⇧⌘M) sets a marker at the playhead.
+Markers sit on their own lane under the ruler and slide freely — the picture
+follows the drag. The Stills tab renders one full-resolution image per marker
+and, if wanted, a contact sheet of all of them (⌥⌘G).
 
 Everything is also in the menu bar with a shortcut. Transport is ⌘J / ⌘K / ⌘L
 for back a frame, play, forward a frame, with Shift for ten. ⌘N drops an A/B

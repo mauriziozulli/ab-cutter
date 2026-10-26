@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import CoreGraphics
 import CoreImage
@@ -158,6 +159,133 @@ enum StillExporter {
         guard CGImageDestinationFinalize(destination) else {
             throw StillError.writeFailed("Der Encoder hat das Bild abgelehnt.")
         }
+    }
+
+    // MARK: - Contact sheet
+
+    /// A copy no wider than `maxWidth`, so a sheet of many 4K frames does not
+    /// have to keep them all in memory.
+    static func thumbnail(_ image: CGImage, maxWidth: Int) -> CGImage? {
+        guard image.width > maxWidth else { return image }
+        let width = maxWidth
+        let height = max(Int((Double(image.height) * Double(width) / Double(image.width)).rounded()), 1)
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage()
+    }
+
+    /// Every marker's frame on one sheet, in film order, with its number and
+    /// timecode under it. Ink ground and bone type, like the end card — it is
+    /// one more printed surface.
+    @MainActor
+    static func contactSheet(
+        cells: [(image: CGImage, label: String)],
+        columns: Int,
+        title: String
+    ) -> CGImage? {
+        guard let first = cells.first else { return nil }
+        let columns = min(max(columns, 1), max(cells.count, 1))
+        let rows = (cells.count + columns - 1) / columns
+
+        let cellWidth: CGFloat = 640
+        let aspect = CGFloat(first.image.height) / CGFloat(max(first.image.width, 1))
+        let cellHeight = (cellWidth * aspect).rounded()
+        let caption: CGFloat = 44
+        let gap: CGFloat = 28
+        let margin: CGFloat = 56
+        let header: CGFloat = 84
+
+        let width = Int(margin * 2 + CGFloat(columns) * cellWidth + CGFloat(columns - 1) * gap)
+        let height = Int(
+            margin + header + CGFloat(rows) * (cellHeight + caption) + CGFloat(rows - 1) * gap + margin
+        )
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        let ink = Brand.tinte.nsColor
+        context.setFillColor(ink.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.interpolationQuality = .high
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+        defer { NSGraphicsContext.restoreGraphicsState() }
+
+        func draw(_ text: String, size: CGFloat, colour: NSColor, at point: CGPoint, mono: Bool = false) {
+            let font = mono
+                ? NSFont.monospacedDigitSystemFont(ofSize: size, weight: .medium)
+                : NSFont.systemFont(ofSize: size, weight: .semibold)
+            NSAttributedString(
+                string: text,
+                attributes: [.font: font, .foregroundColor: colour]
+            ).draw(at: point)
+        }
+
+        draw(
+            title,
+            size: 30,
+            colour: Brand.knochen.nsColor,
+            at: CGPoint(x: margin, y: CGFloat(height) - margin - 34)
+        )
+        draw(
+            "\(cells.count) Still\(cells.count == 1 ? "" : "s")",
+            size: 18,
+            colour: Brand.leise.nsColor,
+            at: CGPoint(x: margin, y: CGFloat(height) - margin - 62),
+            mono: true
+        )
+
+        for (index, cell) in cells.enumerated() {
+            let column = CGFloat(index % columns)
+            let row = CGFloat(index / columns)
+            let x = margin + column * (cellWidth + gap)
+            // CoreGraphics counts from the bottom; rows are laid out from the top.
+            let top = CGFloat(height) - margin - header - row * (cellHeight + caption + gap)
+            let picture = CGRect(x: x, y: top - cellHeight, width: cellWidth, height: cellHeight)
+
+            let fit = min(
+                cellWidth / CGFloat(max(cell.image.width, 1)),
+                cellHeight / CGFloat(max(cell.image.height, 1))
+            )
+            let drawn = CGSize(
+                width: CGFloat(cell.image.width) * fit,
+                height: CGFloat(cell.image.height) * fit
+            )
+            context.draw(
+                cell.image,
+                in: CGRect(
+                    x: picture.midX - drawn.width / 2,
+                    y: picture.midY - drawn.height / 2,
+                    width: drawn.width,
+                    height: drawn.height
+                )
+            )
+            draw(
+                cell.label,
+                size: 20,
+                colour: Brand.knochen.nsColor,
+                at: CGPoint(x: x, y: picture.minY - caption + 12),
+                mono: true
+            )
+        }
+
+        return context.makeImage()
     }
 
     // MARK: - Layout

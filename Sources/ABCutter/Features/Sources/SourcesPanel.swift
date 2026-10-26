@@ -389,7 +389,7 @@ struct AudioSourceRow: View {
             Button("+1f") { state.nudgeOffset(state.project.frameDuration, for: source) }
             Button("+10f") { state.nudgeOffset(10 * state.project.frameDuration, for: source) }
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(StudioButtonStyle())
         .controlSize(.mini)
     }
 

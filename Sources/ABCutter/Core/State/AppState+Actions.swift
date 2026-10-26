@@ -8,6 +8,7 @@ import SwiftUI
 enum InspectorTab: String, CaseIterable, Identifiable {
     case clips
     case cover
+    case stills
     case export
 
     var id: String { rawValue }
@@ -16,6 +17,7 @@ enum InspectorTab: String, CaseIterable, Identifiable {
         switch self {
         case .clips: "Clips"
         case .cover: "Titelbild"
+        case .stills: "Stills"
         case .export: "Export"
         }
     }
@@ -24,6 +26,7 @@ enum InspectorTab: String, CaseIterable, Identifiable {
         switch self {
         case .clips: "scissors"
         case .cover: "photo"
+        case .stills: "camera.on.rectangle"
         case .export: "square.and.arrow.up"
         }
     }

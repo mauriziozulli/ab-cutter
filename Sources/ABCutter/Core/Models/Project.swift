@@ -731,6 +731,28 @@ enum EndCardGround: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// A point in the film a still is rendered from. Placed at the playhead with
+/// the + button and slid along the timeline afterwards; the frame is only read
+/// when the stills are rendered, so moving one costs nothing.
+struct StillMarker: Codable, Hashable, Identifiable {
+    var id = UUID()
+    /// Seconds from the first frame of the picture.
+    var time: Double
+
+    init(id: UUID = UUID(), time: Double) {
+        self.id = id
+        self.time = time
+    }
+
+    /// Lenient like everything else here; a marker without a time is useless,
+    /// so that one key stays strict.
+    init(from decoder: Decoder) throws {
+        let box = try decoder.container(keyedBy: CodingKeys.self)
+        time = try box.decode(Double.self, forKey: .time)
+        id = (try? box.decode(UUID.self, forKey: .id)) ?? UUID()
+    }
+}
+
 /// The cover image of a post: one frame grabbed at full resolution, optionally
 /// cropped to a social format and laid out as a title card.
 struct StillSettings: Codable, Hashable {
@@ -746,6 +768,13 @@ struct StillSettings: Codable, Hashable {
     /// Write a title card per selected social format.
     var saveTitleCards: Bool = true
     var fileFormat: StillFileFormat = .png
+
+    // MARK: - Marker stills
+
+    /// Besides one image per marker, lay all of them out on one contact sheet.
+    var saveContactSheet: Bool = true
+    /// Columns of that sheet, 2 … 5.
+    var contactSheetColumns: Int = 3
 
     // MARK: - The end card
 
@@ -783,6 +812,10 @@ struct StillSettings: Codable, Hashable {
         if let value = try? box.decode(Bool.self, forKey: .saveFullFrame) { saveFullFrame = value }
         if let value = try? box.decode(Bool.self, forKey: .saveTitleCards) { saveTitleCards = value }
         if let value = try? box.decode(StillFileFormat.self, forKey: .fileFormat) { fileFormat = value }
+        if let value = try? box.decode(Bool.self, forKey: .saveContactSheet) { saveContactSheet = value }
+        if let value = try? box.decode(Int.self, forKey: .contactSheetColumns) {
+            contactSheetColumns = min(max(value, 2), 5)
+        }
         if let value = try? box.decode(Bool.self, forKey: .saveEndCard) { saveEndCard = value }
         if let value = try? box.decode(String.self, forKey: .endWordmarkTop) { endWordmarkTop = value }
         if let value = try? box.decode(String.self, forKey: .endWordmarkBar) { endWordmarkBar = value }
@@ -817,6 +850,8 @@ struct ABProject: Codable {
     var defaultAfterSourceID: UUID?
     var export = ExportSettings()
     var stills = StillSettings()
+    /// Frames to render as stills, placed on the timeline.
+    var stillMarkers: [StillMarker] = []
 
     init() {}
 
@@ -845,6 +880,7 @@ struct ABProject: Codable {
         if let value = try? box.decode(UUID.self, forKey: .defaultAfterSourceID) { defaultAfterSourceID = value }
         if let value = try? box.decode(ExportSettings.self, forKey: .export) { export = value }
         if let value = try? box.decode(StillSettings.self, forKey: .stills) { stills = value }
+        if let value = try? box.decode([StillMarker].self, forKey: .stillMarkers) { stillMarkers = value }
 
         // Projects written while the look was global kept it inside `export`.
         // `ClipLook`'s field names match those old keys on purpose, so the
@@ -902,6 +938,11 @@ struct ABProject: Codable {
 
     /// Nudges one frame at the project frame rate.
     var frameDuration: Double { 1.0 / frameRate.fps }
+
+    /// Markers in film order — the order they are numbered and rendered in.
+    var sortedStillMarkers: [StillMarker] {
+        stillMarkers.sorted { $0.time < $1.time }
+    }
 
     mutating func clampClips() {
         let limit = max(videoDurationSeconds, 0)

@@ -249,7 +249,7 @@ struct ClipInspector: View {
             .controlSize(.mini)
             .help("Abspielkopf hierher setzen")
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(StudioButtonStyle())
     }
 
     private var lengthRow: some View {
@@ -291,7 +291,7 @@ struct ClipInspector: View {
                         Image(systemName: "arrow.right.to.line")
                     }
                     .controlSize(.mini)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(StudioButtonStyle())
                     .help("Abspielkopf hierher setzen")
                 }
             }
@@ -311,7 +311,7 @@ struct ClipInspector: View {
                     .disabled(clip.usesDefaultSplit)
                 Spacer()
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(StudioButtonStyle())
 
             if clip.switches.count > 1 {
                 Text("\(clip.switches.count) Wechsel — die Seiten wechseln sich ab, beginnend mit A.")

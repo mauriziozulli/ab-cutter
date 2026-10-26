@@ -102,7 +102,7 @@ struct PlayerPane: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Button("Video wählen …") { state.presentVideoPicker() }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(StudioButtonStyle(kind: .primary))
         }
     }
 
@@ -289,7 +289,7 @@ struct PlayerPane: View {
                 .disabled(!state.project.hasVideo)
                 .help("Setzt einen \(String(format: "%g", state.project.defaultClipLengthSeconds))-s-Clip am Abspielkopf (⌘N)")
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(StudioButtonStyle())
         .controlSize(.small)
         .padding(.horizontal, Theme.panelPadding)
         .padding(.vertical, 8)

@@ -123,6 +123,19 @@ func run() throws {
           "A round trip lost a clip's card headline.")
     check(restored.export.chromeSafeTop == 0.17, "A round trip changed a delivery setting.")
 
+    // Still markers: only times are stored, they survive a round trip in
+    // film order, and an older project without any simply has none.
+    var marked = ABProject()
+    marked.stillMarkers = [StillMarker(time: 42), StillMarker(time: 7.5)]
+    marked.stills.contactSheetColumns = 4
+    let markedBack = try JSONDecoder().decode(
+        Document.self, from: JSONEncoder().encode(Document(version: 1, project: marked))
+    ).project
+    check(markedBack.stillMarkers.count == 2, "A round trip lost the still markers.")
+    check(markedBack.sortedStillMarkers.map(\.time) == [7.5, 42], "Markers are not in film order.")
+    check(markedBack.stills.contactSheetColumns == 4, "A round trip lost the contact-sheet columns.")
+    check(old.project.stillMarkers.isEmpty, "A legacy project invented markers.")
+
     // Loop semantics: no switches inside the selection — the boundary lies
     // between the exported passes.
     check(restored.clips[0].switches.isEmpty, "A loop clip reported switches in project time.")

@@ -160,7 +160,7 @@ struct StillsPanel: View {
             .controlSize(.small)
 
             Button("Bilder sichern") { state.saveStills() }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(StudioButtonStyle(kind: .primary))
                 .controlSize(.small)
                 .disabled(!wantsAnything)
         }

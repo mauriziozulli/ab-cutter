@@ -1,13 +1,20 @@
 import AppKit
 import SwiftUI
 
-/// A small, deliberately flat set of tokens so the app reads as one surface
-/// rather than a pile of default controls.
+/// The chrome tokens, now read off the Studio faceplate it shares with
+/// Paranoid Projects (`StudioStyle`). The tints below still name what a clip,
+/// a source or a marker *is*; the Brand palette stays what the exports wear.
 enum Theme {
-    static let panelBackground = Color(nsColor: .underPageBackgroundColor)
-    static let cardBackground = Color(nsColor: .controlBackgroundColor)
-    static let hairline = Color(nsColor: .separatorColor)
-    static let accent = Color.accentColor
+    private static let studio = StudioStyle.studio
+
+    static let panelBackground = studio.bg
+    static let cardBackground = studio.panel
+    static let hairline = studio.line
+    static let accent = studio.accent
+
+    /// Still markers on the timeline: the cool counterpoint, so a marker never
+    /// reads as a clip (ochre) or as a side of the A/B (rost, blue).
+    static let stillTint = studio.counterpoint
 
     /// Before / after identity colours, reused across the timeline and
     /// panels: the reference side wears Rost, the mix side blue. Red against
@@ -33,32 +40,50 @@ enum Theme {
         kind == .loop ? loopTint : clipTint
     }
 
-    static let cornerRadius: CGFloat = 8
+    static let cornerRadius: CGFloat = 10
     static let rowSpacing: CGFloat = 8
-    static let panelPadding: CGFloat = 12
+    static let panelPadding: CGFloat = 14
 }
 
 extension View {
-    /// A grouped block with a title, used for every side-panel section.
+    /// A grouped block with a heading, used for every side-panel section.
+    /// Sentence case and quiet — the heading is a label, not a reading.
     func abSection(_ title: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title.uppercased())
-                .font(.system(size: 10, weight: .semibold))
-                .kerning(0.6)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 7) {
+            SectionLabel(text: title)
             self
         }
     }
 
+    /// A raised group: the panel surface on the bed, no border.
     func abCard() -> some View {
-        padding(10)
-            .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+        modifier(CardSurface())
+    }
+}
+
+private struct CardSurface: ViewModifier {
+    @Environment(\.studioStyle) private var style
+
+    func body(content: Content) -> some View {
+        content.studioCard(style, padding: 12)
+    }
+}
+
+/// A heading inside a surface: the label above a group of rows.
+struct SectionLabel: View {
+    let text: String
+    @Environment(\.studioStyle) private var style
+
+    var body: some View {
+        Text(text)
+            .font(style.ui(AppType.small + 0.5, weight: .semibold))
+            .foregroundStyle(style.muted)
     }
 }
 
 /// Monospaced digits keep timecode fields from jittering as they count.
 extension Text {
     func timecodeStyle(size: CGFloat = 12) -> Text {
-        font(.system(size: size, weight: .medium, design: .monospaced))
+        font(.system(size: size, weight: .medium).monospacedDigit())
     }
 }

@@ -22,7 +22,6 @@ struct AppCommands: Commands {
             Button("Alle per Wellenform syncen") { state.alignAllByWaveform() }
                 .keyboardShortcut("y", modifiers: [.command, .shift])
                 .disabled(!state.project.hasVideo)
-                .disabled(!state.project.hasVideo)
 
             Divider()
 
@@ -45,6 +44,30 @@ struct AppCommands: Commands {
             Button("Titelbild greifen") { state.grabStill() }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
                 .disabled(!state.project.hasVideo)
+        }
+
+        CommandMenu("Stills") {
+            Button("Still-Marker am Abspielkopf setzen") { state.addStillMarkerAtPlayhead() }
+                .keyboardShortcut("m", modifiers: [.command, .shift])
+                .disabled(!state.project.hasVideo)
+            Button("Gewählten Marker entfernen") { state.removeSelectedStillMarker() }
+                .keyboardShortcut(.delete, modifiers: [.command, .option])
+                .disabled(state.selectedMarkerID == nil)
+
+            Divider()
+
+            Button("Vorheriger Marker") { state.goToStillMarker(offset: -1) }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+                .disabled(state.project.stillMarkers.isEmpty)
+            Button("Nächster Marker") { state.goToStillMarker(offset: 1) }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                .disabled(state.project.stillMarkers.isEmpty)
+
+            Divider()
+
+            Button("Stills aus allen Markern rendern") { state.renderMarkerStills() }
+                .keyboardShortcut("g", modifiers: [.command, .option])
+                .disabled(state.project.stillMarkers.isEmpty || state.isExportingStills)
         }
 
         CommandMenu("Clip") {

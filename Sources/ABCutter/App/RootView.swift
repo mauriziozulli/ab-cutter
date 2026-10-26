@@ -10,6 +10,8 @@ struct RootView: View {
     /// typed into; a local monitor can check who has focus first.
     @State private var zoomKeyMonitor: Any?
 
+    @Environment(\.studioStyle) private var style
+
     var body: some View {
         VStack(spacing: 0) {
             HSplitView {
@@ -18,7 +20,7 @@ struct RootView: View {
 
                 VStack(spacing: 0) {
                     PlayerPane(state: state, player: state.player)
-                    Divider()
+                    StudioHairline()
                     TimelineView(state: state, player: state.player)
                 }
                 .frame(minWidth: 480)
@@ -27,9 +29,10 @@ struct RootView: View {
                     .frame(minWidth: 300, idealWidth: 350, maxWidth: 470)
             }
 
-            Divider()
+            StudioHairline()
             statusBar
         }
+        .background(style.bg)
         .frame(minWidth: 1120, minHeight: 720)
         .toolbar { toolbarItems }
         .alert(
@@ -42,6 +45,7 @@ struct RootView: View {
             message: { Text(state.errorMessage ?? "") }
         )
         .navigationTitle(state.windowTitle)
+        .studioStyle()
         .onAppear { installZoomKeys() }
     }
 
@@ -79,21 +83,21 @@ struct RootView: View {
             if state.project.hasVideo {
                 Picker("", selection: $state.inspectorTab) {
                     ForEach(InspectorTab.allCases) { tab in
-                        Label(tab.title, systemImage: tab.symbol).tag(tab)
+                        Text(tab.title).tag(tab)
                     }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .padding(.horizontal, Theme.panelPadding)
-                .padding(.vertical, 8)
-
-                Divider()
+                .frame(height: style.barHeight + 8)
+                .studioBar(style)
 
                 ScrollView {
                     Group {
                         switch state.inspectorTab {
                         case .clips: ClipsPanel(state: state)
                         case .cover: StillsPanel(state: state)
+                        case .stills: MarkerStillsPanel(state: state)
                         case .export: ExportPanel(state: state, queue: state.exportQueue)
                         }
                     }
@@ -103,7 +107,7 @@ struct RootView: View {
                 gettingStarted
             }
         }
-        .background(Theme.panelBackground)
+        .background(style.bg)
     }
 
     /// Without a film every panel is speculative, so the column explains the
@@ -111,17 +115,19 @@ struct RootView: View {
     private var gettingStarted: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("So läuft es")
-                .font(.system(size: 12, weight: .semibold))
+                .font(style.ui(AppType.body, weight: .semibold))
+                .foregroundStyle(style.text)
 
             step(1, "Fertigen Film laden.", "Timecode und Bildrate werden automatisch gelesen.")
             step(2, "Mixe und Stems hinzufügen.", "Gestempelte Dateien legen sich selbst; den Rest schiebst du.")
             step(3, "Clips setzen.", "Suchen, ⌘N, suchen, ⌘N — Kanten ziehst du nach Gehör, der A/B-Wechsel bleibt stehen.")
-            step(4, "Titelbild greifen und exportieren.", "Jeder Clip in jedem Format, in einem Lauf.")
+            step(4, "Stills markieren.", "Mit + einen Marker am Abspielkopf setzen, in der Zeitleiste verschieben — gerendert wird aus allen Markern.")
+            step(5, "Exportieren.", "Jeder Clip in jedem Format, in einem Lauf.")
 
-            Divider()
+            StudioHairline(soft: true)
 
             Button("Video wählen …") { state.presentVideoPicker() }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(StudioButtonStyle(kind: .primary))
 
             Spacer()
         }
@@ -132,16 +138,17 @@ struct RootView: View {
     private func step(_ number: Int, _ title: String, _ detail: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Text("\(number)")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .font(style.mono(AppType.small - 1, weight: .bold))
                 .foregroundStyle(.white)
-                .frame(width: 17, height: 17)
-                .background(Circle().fill(Theme.accent))
+                .frame(width: 18, height: 18)
+                .background(Circle().fill(style.accent))
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.caption)
+                    .font(style.ui(AppType.small + 1, weight: .medium))
+                    .foregroundStyle(style.text)
                 Text(detail)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(style.ui(AppType.small))
+                    .foregroundStyle(style.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -180,6 +187,12 @@ struct RootView: View {
             .disabled(!state.project.hasVideo)
             .help("Bild am Abspielkopf greifen (⇧⌘G)")
 
+            Button { state.addStillMarkerAtPlayhead() } label: {
+                Label("Still", systemImage: "plus.viewfinder")
+            }
+            .disabled(!state.project.hasVideo)
+            .help("Still-Marker am Abspielkopf setzen (⇧⌘M)")
+
             Button { state.startExport() } label: {
                 Label("Export", systemImage: "square.and.arrow.up")
             }
@@ -191,23 +204,22 @@ struct RootView: View {
     // MARK: - Status bar
 
     private var statusBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             if state.isLoadingMedia {
                 ProgressView().controlSize(.small)
             }
 
             Text(state.status)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(style.ui(AppType.small))
+                .foregroundStyle(style.muted)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .layoutPriority(1)
 
             if state.project.hasVideo {
-                Divider().frame(height: 12)
                 Text(state.summaryLine)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .font(style.mono(AppType.small))
+                    .foregroundStyle(style.faint)
                     .lineLimit(1)
                     .truncationMode(.head)
             }
@@ -220,12 +232,18 @@ struct RootView: View {
                     .frame(width: 110)
             }
 
+            if state.isExportingStills {
+                ProgressView(value: state.stillExportProgress)
+                    .controlSize(.small)
+                    .frame(width: 110)
+            }
+
             Text("v\(AppVersion.string)")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .font(style.mono(AppType.small))
+                .foregroundStyle(style.faint)
         }
         .padding(.horizontal, Theme.panelPadding)
-        .padding(.vertical, 6)
-        .background(Theme.panelBackground)
+        .frame(height: style.statusBarHeight)
+        .background(style.sunken)
     }
 }

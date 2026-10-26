@@ -26,6 +26,12 @@ finished film and exports before/after social-media excerpts from it.
   and nothing else may hard-code one. If the sticker changes, that repo
   changes first and this one follows it.
 
+- The window's chrome follows the Paranoid Projects Studio faceplate
+  (`Theme/StudioStyle.swift`, `Theme/StudioComponents.swift`, restated from
+  `mauriziozulli/paranoid-projects`). Use its components and the `Theme`
+  tokens; do not hand-build a bordered control. Brand colours are for what
+  gets exported, not for the app's own chrome.
+
 ## Change discipline
 
 For each completed step:
