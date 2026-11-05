@@ -474,7 +474,9 @@ final class Store: ObservableObject {
         status = "Aufnahme läuft — in Pro Tools abspielen."
 
         let rect = frameWindow.captureRect
-        Task {
+        pendingTake = recording
+        status = "Bildschirmaufnahme startet …"
+        recordStartTask = Task {
             do {
                 try audio.startWriting(
                     originalURL: target.appendingPathComponent(recording.originalFile),
@@ -484,23 +486,32 @@ final class Store: ObservableObject {
                     rect: rect,
                     to: target.appendingPathComponent(recording.screenFile)
                 )
-                pendingTake = recording
+                if isRecording { status = "Aufnahme läuft — in Pro Tools abspielen. Stop mit ⌘R." }
+                return true
             } catch {
+                pendingTake = nil
                 _ = audio.stopWriting()
                 finishRecordingUI()
                 errorMessage = error.localizedDescription
+                return false
             }
         }
     }
 
     private var pendingTake: Take?
+    /// The start of the capture, which takes a moment. Stop waits for it, so
+    /// a quick second press still ends the take instead of being ignored.
+    private var recordStartTask: Task<Bool, Never>?
 
     func stopRecording() {
         guard isRecording, let pending = pendingTake else { return }
         pendingTake = nil
         status = "Aufnahme wird abgeschlossen …"
+        let starting = recordStartTask
+        recordStartTask = nil
         Task {
             var take = pending
+            guard await starting?.value ?? true else { return }
             do {
                 let picture = try await screen.stop()
                 let starts = audio.stopWriting()

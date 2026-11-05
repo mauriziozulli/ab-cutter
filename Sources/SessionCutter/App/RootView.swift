@@ -9,9 +9,6 @@ struct RootView: View {
     @ObservedObject var store: Store
     @Environment(\.studioStyle) private var style
     @State private var keyMonitor: Any?
-    @State private var now = Date()
-
-    private let clock = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,7 +35,6 @@ struct RootView: View {
             message: { Text(store.errorMessage ?? "") }
         )
         .studioStyle()
-        .onReceive(clock) { now = $0 }
         .onAppear {
             installKeys()
             if store.showRecordPanel {
@@ -142,10 +138,17 @@ struct RootView: View {
                     .foregroundStyle(style.ready)
                     .frame(minWidth: 70, alignment: .leading)
             } else if let start = store.recordingStart {
-                Text(Clock.string(now.timeIntervalSince(start)))
-                    .font(style.mono(AppType.title, weight: .semibold))
-                    .foregroundStyle(Tint.record)
-                    .frame(minWidth: 70, alignment: .leading)
+                // Its own clock: a timer owned by this view would be restarted
+                // by every meter update and never get to tick.
+                SwiftUI.TimelineView(.periodic(from: start, by: 0.2)) { context in
+                    HStack(spacing: 6) {
+                        Circle().fill(Tint.record).frame(width: 8, height: 8)
+                        Text(Clock.string(context.date.timeIntervalSince(start)))
+                            .font(style.mono(AppType.title, weight: .semibold))
+                            .foregroundStyle(Tint.record)
+                    }
+                }
+                .frame(minWidth: 90, alignment: .leading)
             } else {
                 Color.clear.frame(width: 70, height: 1)
             }
