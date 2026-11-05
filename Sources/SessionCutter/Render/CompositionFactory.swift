@@ -65,7 +65,7 @@ enum CompositionFactory {
                    withMediaType: .video,
                    preferredTrackID: kCMPersistentTrackID_Invalid
                ) {
-                let filmDuration = CMTimeGetSeconds(try await filmAsset.load(.duration))
+                let filmDuration = (try? await filmAsset.load(.duration)).map(CMTimeGetSeconds) ?? 0
                 try await place(
                     filmSource, into: filmTrack,
                     sourceFrom: range.lowerBound, sourceTo: min(range.upperBound, filmDuration),
@@ -214,6 +214,12 @@ enum CompositionFactory {
     /// Places source time `sourceFrom ..< sourceTo` at composition time `at`,
     /// clipped to what the source has, padding any gap before it with an
     /// empty edit.
+    ///
+    /// The clipping is done in CMTime, against the source's own range: a
+    /// range converted from seconds can round a sample past the end of the
+    /// file, and AVFoundation refuses that (-12780) — which used to take the
+    /// whole preview down with it. A piece that still will not go in is
+    /// logged and left out; the rest of the post is built regardless.
     private static func place(
         _ source: AVAssetTrack,
         into track: AVMutableCompositionTrack,
@@ -221,27 +227,36 @@ enum CompositionFactory {
         sourceTo: Double,
         at: Double
     ) async throws {
-        // Loaded, not read: the synchronous property answers zero for a
-        // track whose asset has not loaded it yet, and then nothing at all
-        // is placed — a black preview that will not play.
-        let sourceRange = try await source.load(.timeRange)
-        let available = CMTimeGetSeconds(sourceRange.end)
-        guard available.isFinite, available > 0 else {
+        guard sourceFrom.isFinite, sourceTo.isFinite, at.isFinite else { return }
+        guard let sourceRange = try? await source.load(.timeRange),
+              sourceRange.isValid, !sourceRange.isEmpty else {
             Diagnostics.log("Spur ohne lesbare Länge übersprungen")
             return
         }
-        let from = max(sourceFrom, 0)
-        let to = min(sourceTo, available)
-        guard to - from > 0.001 else { return }
-        let target = at + (from - sourceFrom)
-        let end = CMTimeGetSeconds(track.timeRange.end)
-        if target > end + 0.0005 {
-            track.insertEmptyTimeRange(CMTimeRange(start: time(end), duration: time(target - end)))
+
+        // Exact CMTime arithmetic against the file's own edges.
+        let start = CMTimeMaximum(time(max(sourceFrom, 0)), sourceRange.start)
+        let end = CMTimeMinimum(time(sourceTo), sourceRange.end)
+        guard CMTimeCompare(end, start) > 0,
+              CMTimeGetSeconds(CMTimeSubtract(end, start)) > 0.001 else { return }
+
+        let target = time(max(at + (CMTimeGetSeconds(start) - sourceFrom), 0))
+        let trackEnd = track.timeRange.isValid ? track.timeRange.end : .zero
+        if CMTimeCompare(target, trackEnd) > 0 {
+            track.insertEmptyTimeRange(CMTimeRange(start: trackEnd, end: target))
         }
-        try track.insertTimeRange(
-            CMTimeRange(start: time(from), duration: time(to - from)),
-            of: source,
-            at: time(max(target, end))
-        )
+        let insertAt = CMTimeMaximum(target, trackEnd)
+        do {
+            try track.insertTimeRange(CMTimeRange(start: start, end: end), of: source, at: insertAt)
+        } catch {
+            Diagnostics.log(String(
+                format: "Stück übersprungen (%@): Quelle %.4f–%.4f s von %.4f–%.4f s, an %.4f s — %@",
+                source.mediaType.rawValue,
+                CMTimeGetSeconds(start), CMTimeGetSeconds(end),
+                CMTimeGetSeconds(sourceRange.start), CMTimeGetSeconds(sourceRange.end),
+                CMTimeGetSeconds(insertAt),
+                Diagnostics.describe(error)
+            ))
+        }
     }
 }
