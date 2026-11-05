@@ -102,6 +102,7 @@ struct RootView: View {
                 Divider()
                 Button("Im Finder zeigen") { store.revealFolder() }
                     .disabled(store.folder == nil)
+                Button("Protokoll zeigen") { Diagnostics.reveal() }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }

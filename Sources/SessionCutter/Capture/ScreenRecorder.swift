@@ -39,6 +39,9 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
 
     private var firstTime: CMTime?
     private var failure: Error?
+    /// What the stream delivered, by frame status, and what was written.
+    private var statusCounts: [Int: Int] = [:]
+    private var appended = 0
 
     static var hasPermission: Bool { CGPreflightScreenCaptureAccess() }
 
@@ -128,7 +131,13 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             self.adaptor = adaptor
             self.firstTime = nil
             self.failure = nil
+            self.statusCounts = [:]
+            self.appended = 0
         }
+        Diagnostics.log(String(
+            format: "Bildaufnahme: Display %u, Ausschnitt %.0f,%.0f %.0f×%.0f pt → %ld×%ld px, %ld eigene App(s) ausgeschlossen",
+            display.displayID, local.minX, local.minY, local.width, local.height, width, height, ownApps.count
+        ))
         self.stream = stream
 
         do {
@@ -151,6 +160,9 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         let state: (AVAssetWriter?, AVAssetWriterInput?, CMTime?, Error?) = queue.sync {
             (writer, input, firstTime, failure)
         }
+        let counts = queue.sync { (statusCounts, appended) }
+        Diagnostics.log("Bildaufnahme gestoppt: Frame-Status \(counts.0) (0 = vollständig), \(counts.1) Bilder geschrieben, Writer-Status \(state.0?.status.rawValue ?? -1)")
+        if let error = state.3 { Diagnostics.log("Bildaufnahme Fehler: \(Diagnostics.describe(error))") }
         guard let writer = state.0, let input = state.1, let first = state.2 else {
             throw ScreenRecordError.nothingRecorded
         }
@@ -162,6 +174,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             writer.finishWriting { continuation.resume() }
         }
         if writer.status == .failed {
+            Diagnostics.log("Writer fehlgeschlagen: \(Diagnostics.describe(writer.error))")
             throw ScreenRecordError.writerFailed(writer.error?.localizedDescription ?? "")
         }
         queue.sync {
@@ -178,8 +191,9 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         guard type == .screen, sampleBuffer.isValid,
               let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
                 as? [[SCStreamFrameInfo: Any]],
-              let rawStatus = attachments.first?[.status] as? Int,
-              SCFrameStatus(rawValue: rawStatus) == .complete,
+              let rawStatus = attachments.first?[.status] as? Int else { return }
+        statusCounts[rawStatus, default: 0] += 1
+        guard SCFrameStatus(rawValue: rawStatus) == .complete,
               let pixels = CMSampleBufferGetImageBuffer(sampleBuffer),
               let writer, let input, let adaptor else { return }
 
@@ -193,12 +207,15 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             firstTime = time
         }
         guard writer.status == .writing, input.isReadyForMoreMediaData else { return }
-        if !adaptor.append(pixels, withPresentationTime: time) {
+        if adaptor.append(pixels, withPresentationTime: time) {
+            appended += 1
+        } else {
             failure = writer.error
         }
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
+        Diagnostics.log("Bildaufnahme abgebrochen: \(Diagnostics.describe(error))")
         queue.async { self.failure = error }
     }
 

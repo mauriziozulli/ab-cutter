@@ -180,7 +180,16 @@ enum CompositionFactory {
         if composition.tracks(withMediaType: .video).isEmpty {
             throw BuildError.noRecording
         }
-        let total = time(length)
+        // The instruction covers the composition exactly: an instruction that
+        // runs past the media makes AVFoundation refuse the whole item.
+        let total = composition.duration
+        Diagnostics.log(String(
+            format: "Komposition %@: %.3f–%.3f s, Dauer %.3f s, Bild %@, Film %@, %ld Abschnitte",
+            format.fileSuffix, range.lowerBound, range.upperBound, CMTimeGetSeconds(total),
+            screenTrackID == kCMPersistentTrackID_Invalid ? "fehlt" : "ok",
+            filmTrackID == kCMPersistentTrackID_Invalid ? "fehlt" : "ok",
+            segments.count
+        ))
         let videoComposition = AVMutableVideoComposition()
         videoComposition.customVideoCompositorClass = SessionCompositor.self
         videoComposition.renderSize = format.size

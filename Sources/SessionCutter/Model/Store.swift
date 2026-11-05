@@ -520,6 +520,12 @@ final class Store: ObservableObject {
                 take.duration = picture.duration
                 take.originalLead = (starts.original ?? picture.start) - picture.start
                 take.mixLead = (starts.mix ?? picture.start) - picture.start
+                Diagnostics.log(String(
+                    format: "Take %@: %.2f s, Ton-Vorlauf Original %@, Mix %@",
+                    take.folder, take.duration,
+                    starts.original.map { String(format: "%.3f s", $0 - picture.start) } ?? "kein Ton",
+                    starts.mix.map { String(format: "%.3f s", $0 - picture.start) } ?? "kein Ton"
+                ))
 
                 session.takes.append(take)
                 if session.takes.count == 1, session.outPoint <= session.inPoint {
@@ -696,11 +702,29 @@ final class Store: ObservableObject {
                 )
                 guard !Task.isCancelled else { return }
                 previewOrigin = post.origin
-                player.replaceCurrentItem(with: post.playerItem())
+                let item = post.playerItem()
+                watch(item)
+                player.replaceCurrentItem(with: item)
                 seek(to: resume)
                 if wasPlaying { player.play() }
             } catch {
+                Diagnostics.log("Vorschau nicht gebaut: \(Diagnostics.describe(error))")
                 status = error.localizedDescription
+            }
+        }
+    }
+
+    private var itemObservation: NSKeyValueObservation?
+
+    /// A player item that fails does so quietly: a black picture and a play
+    /// button that does nothing. Say so, and log why.
+    private func watch(_ item: AVPlayerItem) {
+        itemObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            guard item.status == .failed else { return }
+            let detail = Diagnostics.describe(item.error)
+            Diagnostics.log("Vorschau fehlgeschlagen: \(detail)")
+            Task { @MainActor [weak self] in
+                self?.errorMessage = "Die Vorschau lässt sich nicht abspielen.\n\n\(detail)\n\nProtokoll: Menü … → Protokoll zeigen."
             }
         }
     }
