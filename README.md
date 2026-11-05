@@ -232,3 +232,24 @@ Each output file is one `AVAssetReader` → `AVAssetWriter` pass:
 ## Licence
 
 Not yet chosen.
+
+## Session Cutter
+
+A lean sibling app in the same package, for posts like "film on top, Pro
+Tools underneath, Original / Final Mix switching":
+
+1. **Aufnahme** — a 3:2 frame is laid over Pro Tools (drag by the tab, size
+   by the corner; clicks pass through it). Original and final mix come in
+   as two stereo pairs: one four-channel device (1–2 / 3–4) or two devices
+   such as Audio Bridge 2A and 2B. ⌘R records, ⌘R stops.
+2. **Schnitt** — the film is placed over the take from its own file and
+   synced by the recorded original. W sets an A/B switch, S a still, I/O the
+   export range; flags slide by drag. Space plays, ←/→ step a frame.
+3. **Export** — 4:5 (1080×1350, film 1080×630 over Pro Tools 1080×720) and
+   9:16 (same bands, centred on the softened film) as MP4, plus per still the
+   post frame in each format and the film frame (PNG and a 2560 px web JPEG).
+
+Run it with `swift run SessionCutter`, or build an app with
+`packaging/build-session-cutter.sh`. Sessions live in
+`~/Movies/Session Cutter/<date>/`; macOS asks once for screen recording and
+microphone access.
