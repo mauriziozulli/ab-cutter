@@ -66,7 +66,7 @@ enum CompositionFactory {
                    preferredTrackID: kCMPersistentTrackID_Invalid
                ) {
                 let filmDuration = CMTimeGetSeconds(try await filmAsset.load(.duration))
-                try place(
+                try await place(
                     filmSource, into: filmTrack,
                     sourceFrom: range.lowerBound, sourceTo: min(range.upperBound, filmDuration),
                     at: 0
@@ -119,16 +119,16 @@ enum CompositionFactory {
                 guard let source = sources[take.id] else { continue }
                 let at = segment.from - range.lowerBound
                 if let screen = source.screen {
-                    try place(screen, into: screenTrack,
+                    try await place(screen, into: screenTrack,
                               sourceFrom: segment.from - take.start, sourceTo: segment.to - take.start, at: at)
                 }
                 if let original = source.original {
-                    try place(original, into: originalTrack,
+                    try await place(original, into: originalTrack,
                               sourceFrom: segment.from - take.start - take.originalLead,
                               sourceTo: segment.to - take.start - take.originalLead, at: at)
                 }
                 if let mix = source.mix {
-                    try place(mix, into: mixTrack,
+                    try await place(mix, into: mixTrack,
                               sourceFrom: segment.from - take.start - take.mixLead,
                               sourceTo: segment.to - take.start - take.mixLead, at: at)
                 }
@@ -220,8 +220,16 @@ enum CompositionFactory {
         sourceFrom: Double,
         sourceTo: Double,
         at: Double
-    ) throws {
-        let available = CMTimeGetSeconds(source.timeRange.end)
+    ) async throws {
+        // Loaded, not read: the synchronous property answers zero for a
+        // track whose asset has not loaded it yet, and then nothing at all
+        // is placed — a black preview that will not play.
+        let sourceRange = try await source.load(.timeRange)
+        let available = CMTimeGetSeconds(sourceRange.end)
+        guard available.isFinite, available > 0 else {
+            Diagnostics.log("Spur ohne lesbare Länge übersprungen")
+            return
+        }
         let from = max(sourceFrom, 0)
         let to = min(sourceTo, available)
         guard to - from > 0.001 else { return }
