@@ -99,8 +99,26 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 strip -rSTx "$APP/Contents/MacOS/$EXEC" 2>/dev/null || true
-echo "▸ Ad-hoc code-signing…"
-codesign --force --deep --sign - "$APP"
+# macOS ties the screen-recording and microphone permissions to the app's
+# signature. An ad-hoc signature changes with every build, so every build
+# asks again — and sometimes ignores the answer. Sign with your own
+# certificate (Xcode → Settings → Accounts gives you a free "Apple
+# Development" one) and the permissions stick:
+#
+#   SIGN_ID="Apple Development: Your Name (TEAMID)" packaging/build-session-cutter.sh
+#
+# `security find-identity -v -p codesigning` lists the names.
+SIGN_ID="${SIGN_ID:-}"
+if [ -z "$SIGN_ID" ]; then
+  SIGN_ID="$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 -Eo '"Apple Development: [^"]+"' | tr -d '"' || true)"
+fi
+if [ -n "$SIGN_ID" ]; then
+  echo "▸ Signing as $SIGN_ID…"
+  codesign --force --deep --options runtime --sign "$SIGN_ID" "$APP"
+else
+  echo "▸ Ad-hoc code-signing (permissions will be asked again after each build)…"
+  codesign --force --deep --sign - "$APP"
+fi
 
 echo "✓ Built $APP"
 
