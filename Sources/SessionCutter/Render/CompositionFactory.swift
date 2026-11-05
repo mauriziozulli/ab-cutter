@@ -140,7 +140,17 @@ enum CompositionFactory {
                 screenTrackID = screenTrack.trackID
             }
 
+            // An empty track is a reason for the exporter to give up.
+            var audioTracks: [(AVMutableCompositionTrack, Bool)] = []
             for (track, isMix) in [(originalTrack, false), (mixTrack, true)] {
+                if track.segments.isEmpty {
+                    composition.removeTrack(track)
+                } else {
+                    audioTracks.append((track, isMix))
+                }
+            }
+
+            for (track, isMix) in audioTracks {
                 let parameter = AVMutableAudioMixInputParameters(track: track)
                 var audible = isMix == startsOnMix
                 parameter.setVolume(audible ? 1 : 0, at: .zero)

@@ -223,7 +223,6 @@ struct EditView: View {
             Button("Exportieren") { store.export() }
                 .buttonStyle(StudioButtonStyle(kind: .primary))
                 .disabled(store.isExporting || store.session.formats.isEmpty)
-                .keyboardShortcut("e", modifiers: .command)
             Hint("Nur zwischen In und Out. Ablage im Ordner «Export» der Session.")
         }
         .font(style.ui(AppType.small + 1))

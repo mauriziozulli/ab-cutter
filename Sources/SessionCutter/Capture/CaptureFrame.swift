@@ -34,6 +34,9 @@ final class CaptureFrameWindow: NSPanel {
         backgroundColor = .clear
         hasShadow = false
         level = .floating
+        // A panel hides itself when its app loses focus — which is the very
+        // moment Pro Tools is clicked. The frame has to stay.
+        hidesOnDeactivate = false
         isReleasedWhenClosed = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         contentView = frameView

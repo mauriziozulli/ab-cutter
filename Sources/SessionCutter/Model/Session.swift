@@ -253,12 +253,18 @@ struct Session: Codable {
         switches.filter { $0 <= time }.count % 2 == 1
     }
 
-    /// The exported range, made sane. Without an Out point it ends where the
-    /// takes end, not where the film does.
+    /// True once In/Out has been set by hand.
+    var hasCustomRange: Bool { outPoint > inPoint }
+
+    /// The exported range. Until In/Out is set it is exactly the recorded
+    /// takes — never the film before or after them, where Pro Tools would
+    /// be an empty band.
     var exportRange: ClosedRange<Double> {
-        let takeEnd = takes.map(\.end).max() ?? duration
-        let end = outPoint > inPoint ? min(outPoint, duration) : takeEnd
-        let start = min(max(inPoint, 0), max(end - 0.1, 0))
+        let takeStart = max(takes.map(\.start).min() ?? 0, 0)
+        let takeEnd = max(takes.map(\.end).max() ?? duration, takeStart)
+        guard hasCustomRange else { return takeStart...takeEnd }
+        let start = max(inPoint, 0)
+        let end = min(outPoint, max(duration, start))
         return start...max(end, start)
     }
 

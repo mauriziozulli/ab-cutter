@@ -528,9 +528,6 @@ final class Store: ObservableObject {
                 ))
 
                 session.takes.append(take)
-                if session.takes.count == 1, session.outPoint <= session.inPoint {
-                    session.inPoint = take.start
-                }
                 save()
                 selection = nil
                 loadWaveforms()
@@ -613,32 +610,74 @@ final class Store: ObservableObject {
         session.titleStyle.mode = .image
     }
 
+    /// One take after the other, so the matches do not compete for the
+    /// processor and a failure is reported once, by name.
     func syncAllTakes() {
-        for take in session.takes { syncTake(take.id) }
+        let ids = session.takes.map(\.id)
+        Task {
+            var failed: [String] = []
+            for id in ids {
+                if let message = await sync(id) { failed.append(message) }
+            }
+            if !failed.isEmpty { errorMessage = failed.joined(separator: "\n") }
+        }
+    }
+
+    func syncTake(_ id: UUID) {
+        Task {
+            if let message = await sync(id) { errorMessage = message }
+        }
     }
 
     /// Places a take on the film by matching its recorded original against
-    /// the film's own sound.
-    func syncTake(_ id: UUID) {
+    /// the film's own sound. Returns what went wrong, if anything.
+    private func sync(_ id: UUID) async -> String? {
         guard let filmURL = session.filmURL, let folder,
-              let take = session.takes.first(where: { $0.id == id }) else { return }
-        let originalURL = take.url(take.originalFile, in: folder)
+              let index = session.takes.firstIndex(where: { $0.id == id }) else { return nil }
+        let take = session.takes[index]
+        let number = index + 1
         isSyncing = true
-        status = "Synchronisiere am Originalton …"
-        Task {
-            defer { isSyncing = false }
-            do {
-                let result = try await AudioAligner.align(sourceURL: originalURL, videoURL: filmURL)
-                guard let index = session.takes.firstIndex(where: { $0.id == id }) else { return }
-                // The original's first sample lands at film time `offset`, and
-                // sits `originalLead` after the take's first frame.
-                session.takes[index].start = result.offsetSeconds - take.originalLead
-                session.takes[index].syncConfidence = result.confidence
-                status = String(format: "Take synchron (Übereinstimmung %.0f %%).", result.confidence * 100)
-            } catch {
-                errorMessage = error.localizedDescription
+        status = "Synchronisiere Take \(number) am Originalton …"
+        defer { isSyncing = false }
+        do {
+            let result = try await AudioAligner.align(
+                sourceURL: take.url(take.originalFile, in: folder),
+                videoURL: filmURL
+            )
+            // The original's first sample lands at film time `offset`, and
+            // sits `originalLead` after the take's first frame.
+            moveTake(id, to: result.offsetSeconds - take.originalLead, confidence: result.confidence)
+            status = String(format: "Take %d synchron (Übereinstimmung %.0f %%).", number, result.confidence * 100)
+            return nil
+        } catch {
+            return "Take \(number): \(error.localizedDescription)"
+        }
+    }
+
+    /// Moves a take, and with it the switches and stills that lie on it and
+    /// on no other take — they were set against its picture and sound — plus
+    /// In and Out when they sit inside it.
+    private func moveTake(_ id: UUID, to start: Double, confidence: Double? = nil) {
+        guard let index = session.takes.firstIndex(where: { $0.id == id }) else { return }
+        var next = session
+        let old = next.takes[index]
+        let delta = start - old.start
+        let others = next.takes.filter { $0.id != id }
+        func carried(_ time: Double) -> Bool {
+            time >= old.start - 0.001 && time <= old.end + 0.001
+                && !others.contains { time >= $0.start && time <= $0.end }
+        }
+        next.takes[index].start = start
+        if let confidence { next.takes[index].syncConfidence = confidence }
+        if abs(delta) > 0.0001 {
+            next.switches = next.switches.map { carried($0) ? $0 + delta : $0 }
+            next.stills = next.stills.map { carried($0.time) ? StillMarker(id: $0.id, time: $0.time + delta) : $0 }
+            if next.hasCustomRange, carried(next.inPoint), carried(next.outPoint) {
+                next.inPoint += delta
+                next.outPoint += delta
             }
         }
+        session = next
     }
 
     /// The take under the playhead — the one the nudge and sync buttons mean.
@@ -649,9 +688,8 @@ final class Store: ObservableObject {
 
     /// Moves the take under the playhead by whole frames.
     func nudgeTake(frames: Int) {
-        guard let id = currentTake?.id,
-              let index = session.takes.firstIndex(where: { $0.id == id }) else { return }
-        session.takes[index].start += Double(frames) / 25
+        guard let take = currentTake else { return }
+        moveTake(take.id, to: take.start + Double(frames) / 25)
     }
 
     /// Takes the take out, and with it every switch and still that only it
@@ -836,16 +874,26 @@ final class Store: ObservableObject {
         setOut(currentTime)
     }
 
+    /// Setting either edge fixes both, so the other stays where it was
+    /// shown instead of jumping to a default.
     func setIn(_ seconds: Double) {
-        session.inPoint = snapped(min(seconds, session.exportRange.upperBound - 0.5))
+        let range = session.exportRange
+        var next = session
+        next.outPoint = range.upperBound
+        next.inPoint = snapped(min(seconds, range.upperBound - 0.5))
+        session = next
     }
 
     func setOut(_ seconds: Double) {
-        session.outPoint = snapped(max(seconds, session.exportRange.lowerBound + 0.5))
+        let range = session.exportRange
+        var next = session
+        next.inPoint = range.lowerBound
+        next.outPoint = max(snapped(seconds), range.lowerBound + 0.5)
+        session = next
     }
 
     func clearInOut() {
-        session.inPoint = session.takes.map(\.start).min() ?? 0
+        session.inPoint = 0
         session.outPoint = 0
     }
 

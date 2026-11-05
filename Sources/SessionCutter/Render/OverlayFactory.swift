@@ -47,17 +47,21 @@ enum OverlayFactory {
                 shade(context, band: band)
             }
 
-            let maxWidth = band.width * 0.86
+            // Measured off the reference post: the title spans about seven
+            // tenths of the frame, the subtitle about half, tight under it,
+            // the pair just clear of the band's foot.
+            let maxWidth = band.width * 0.72
+            let subMaxWidth = band.width * 0.52
             let bone = Brand.knochen.nsColor
 
             // Measure first, so the block can be centred when asked to.
             var subLine: NSAttributedString?
             var subSize: CGFloat = 0
             if !sub.isEmpty {
-                subSize = fit(sub, maxWidth: maxWidth, start: 30, font: { Typography.mono($0) }, tracking: Typography.monoTracking)
+                subSize = fit(sub, maxWidth: subMaxWidth, start: 52, font: { Typography.mono($0) }, tracking: Typography.monoTracking)
                 subLine = attributed(sub, font: Typography.mono(subSize), colour: bone, tracking: Typography.monoTracking)
             }
-            let subHeight = subLine == nil ? 0 : subSize * 1.5
+            let subHeight = subLine == nil ? 0 : subSize * 1.25
 
             var headRect = CGRect.zero
             var headLine: NSAttributedString?
@@ -75,7 +79,7 @@ enum OverlayFactory {
             } else if style.mode == .text, !head.isEmpty {
                 let face: (CGFloat) -> NSFont = style.face == .fett ? { Typography.fett($0) } : { Typography.serif($0) }
                 let tracking = style.face == .fett ? Typography.fettTracking : Typography.serifTracking
-                let size = fit(head, maxWidth: maxWidth, start: style.face == .fett ? 132 : 150, font: face, tracking: tracking)
+                let size = fit(head, maxWidth: maxWidth, start: style.face == .fett ? 170 : 190, font: face, tracking: tracking)
                 let font = face(size)
                 let line = attributed(head, font: font, colour: bone, tracking: tracking)
                 let width = Typography.advance(of: line, kern: Typography.kern(tracking, at: size))
@@ -84,10 +88,10 @@ enum OverlayFactory {
                 headFont = font
             }
 
-            let gap: CGFloat = headRect.height > 0 && subLine != nil ? band.height * 0.04 : 0
+            let gap: CGFloat = headRect.height > 0 && subLine != nil ? band.height * 0.02 : 0
             let block = headRect.height + gap + subHeight
             let bottom = style.position == .bottom
-                ? band.minY + band.height * 0.09
+                ? band.minY + band.height * 0.05
                 : band.midY - block / 2
 
             if let subLine {
@@ -115,7 +119,7 @@ enum OverlayFactory {
         guard let gradient = CGGradient(
             colorsSpace: CGColorSpace(name: CGColorSpace.sRGB),
             colors: [
-                NSColor.black.withAlphaComponent(0.6).cgColor,
+                NSColor.black.withAlphaComponent(0.45).cgColor,
                 NSColor.black.withAlphaComponent(0).cgColor
             ] as CFArray,
             locations: [0, 1]
@@ -152,7 +156,7 @@ enum OverlayFactory {
                 .shadow: shadow
             ])
             let width = Typography.advance(of: line, kern: Typography.kern(Typography.fettTracking, at: size))
-            let top = band.maxY - band.height * 0.06
+            let top = band.maxY - band.height * 0.05
             line.draw(at: CGPoint(x: band.midX - width / 2, y: top - font.ascender))
         }
     }
