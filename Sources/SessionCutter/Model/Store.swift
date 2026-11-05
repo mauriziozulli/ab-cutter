@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import Combine
 import Foundation
+import UniformTypeIdentifiers
 
 enum Phase: String, CaseIterable, Identifiable {
     case record
@@ -81,7 +82,7 @@ final class Store: ObservableObject {
             forInterval: CMTime(value: 1, timescale: 30),
             queue: .main
         ) { [weak self] time in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.currentTime = CMTimeGetSeconds(time) + self.previewOrigin
                 self.isPlaying = self.player.rate != 0
@@ -90,7 +91,7 @@ final class Store: ObservableObject {
         frameObserver = NotificationCenter.default.addObserver(
             forName: .captureFrameChanged, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.updateFramePixels() }
+            Task { @MainActor [weak self] in self?.updateFramePixels() }
         }
 
         originalRoute = Self.loadRoute(Self.originalRouteKey)
@@ -231,7 +232,7 @@ final class Store: ObservableObject {
     private func startMeters() {
         guard meterTimer == nil else { return }
         meterTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 15, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 let peaks = self.audio.takePeaks()
                 // A meter that falls slowly reads better than one that flickers.
