@@ -11,6 +11,10 @@ let package = Package(
         .executable(
             name: "ABCutter",
             targets: ["ABCutter"]
+        ),
+        .executable(
+            name: "SessionCutter",
+            targets: ["SessionCutter"]
         )
     ],
     targets: [
@@ -19,6 +23,13 @@ let package = Package(
             path: "Sources/ABCutter",
             // The three Sound Matters faces, so a playout carries the house
             // type rather than whatever the system happens to have.
+            resources: [.copy("Resources/Schriften")]
+        ),
+        // The lean sibling: record Pro Tools and both mixes, lay the film
+        // over it, set the A/B switches and stills, export 4:5 and 9:16.
+        .executableTarget(
+            name: "SessionCutter",
+            path: "Sources/SessionCutter",
             resources: [.copy("Resources/Schriften")]
         )
     ]
