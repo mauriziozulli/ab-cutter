@@ -114,7 +114,7 @@ if [ -z "$SIGN_ID" ]; then
 fi
 if [ -n "$SIGN_ID" ]; then
   echo "▸ Signing as $SIGN_ID…"
-  codesign --force --deep --options runtime --sign "$SIGN_ID" "$APP"
+  codesign --force --deep --sign "$SIGN_ID" "$APP"
 else
   echo "▸ Ad-hoc code-signing (permissions will be asked again after each build)…"
   codesign --force --deep --sign - "$APP"
