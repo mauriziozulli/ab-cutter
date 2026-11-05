@@ -16,6 +16,10 @@ final class CaptureFrameWindow: NSPanel {
         didSet { frameView.isRecording = isRecording }
     }
 
+    var countdown: Int? {
+        didSet { frameView.countdown = countdown }
+    }
+
     private let frameView = CaptureFrameView()
 
     init() {
@@ -92,6 +96,9 @@ private final class CaptureFrameView: NSView {
     var isRecording = false {
         didSet { needsDisplay = true }
     }
+    var countdown: Int? {
+        didSet { needsDisplay = true }
+    }
     var onChange: (() -> Void)?
 
     private let grip: CGFloat = 22
@@ -101,7 +108,8 @@ private final class CaptureFrameView: NSView {
     private var startMouse: CGPoint = .zero
 
     private var tint: NSColor {
-        isRecording ? NSColor.systemRed : NSColor.systemBlue
+        if countdown != nil { return NSColor.systemOrange }
+        return isRecording ? NSColor.systemRed : NSColor.systemBlue
     }
 
     private var tabRect: NSRect {
@@ -126,11 +134,35 @@ private final class CaptureFrameView: NSView {
         let tab = NSBezierPath(roundedRect: tabRect, xRadius: 5, yRadius: 5)
         tint.withAlphaComponent(0.9).setFill()
         tab.fill()
-        let label = isRecording ? "● Aufnahme läuft" : "Pro Tools · 3:2 · ziehen"
+        let label: String
+        if let countdown {
+            label = "Start in \(countdown) …"
+        } else {
+            label = isRecording ? "● Aufnahme läuft" : "Pro Tools · 3:2 · ziehen"
+        }
         NSAttributedString(string: label, attributes: [
             .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
             .foregroundColor: NSColor.white
         ]).draw(at: NSPoint(x: tabRect.minX + 9, y: tabRect.minY + 5))
+
+        // The countdown, big, in the middle — the frame is left out of the
+        // recording, so it can say what it likes.
+        if let countdown {
+            let number = NSAttributedString(string: "\(countdown)", attributes: [
+                .font: NSFont.systemFont(ofSize: min(bounds.height * 0.4, 220), weight: .heavy),
+                .foregroundColor: NSColor.white.withAlphaComponent(0.9)
+            ])
+            let size = number.size()
+            let disc = NSRect(
+                x: bounds.midX - size.height * 0.75,
+                y: bounds.midY - size.height * 0.75,
+                width: size.height * 1.5,
+                height: size.height * 1.5
+            )
+            NSColor.black.withAlphaComponent(0.55).setFill()
+            NSBezierPath(ovalIn: disc).fill()
+            number.draw(at: NSPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2))
+        }
 
         tint.setFill()
         let corner = NSBezierPath()

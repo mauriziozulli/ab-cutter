@@ -42,6 +42,12 @@ final class Store: ObservableObject {
         didSet { routesChanged() }
     }
     @Published private(set) var levels: (original: Float, mix: Float) = (0, 0)
+    /// Every channel of every open device, keyed by device UID — the check
+    /// that sound arrives at all, and on which channel.
+    @Published private(set) var channelLevels: [String: [Float]] = [:]
+    @Published private(set) var micPermission = AudioRecorder.permission
+    /// Seconds left before the take starts, while counting down.
+    @Published private(set) var countdown: Int?
     @Published private(set) var isRecording = false
     @Published private(set) var recordingStart: Date?
     @Published private(set) var frameVisible = false
@@ -214,6 +220,15 @@ final class Store: ObservableObject {
     /// Opens the devices so the meters move before anything is recorded.
     func armAudio() {
         guard !isRecording, let originalRoute, let mixRoute else { return }
+        micPermission = AudioRecorder.permission
+        if micPermission == .notDetermined {
+            Task {
+                _ = await AudioRecorder.requestPermission()
+                micPermission = AudioRecorder.permission
+                if micPermission == .authorized { armAudio() }
+            }
+            return
+        }
         do {
             try audio.arm(original: originalRoute, mix: mixRoute)
             startMeters()
@@ -234,12 +249,17 @@ final class Store: ObservableObject {
         meterTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 15, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                let peaks = self.audio.takePeaks()
+                let fresh = self.audio.takeChannelPeaks()
                 // A meter that falls slowly reads better than one that flickers.
-                self.levels = (
-                    max(peaks.original, self.levels.original * 0.82),
-                    max(peaks.mix, self.levels.mix * 0.82)
-                )
+                var merged: [String: [Float]] = [:]
+                for (uid, peaks) in fresh {
+                    let previous = self.channelLevels[uid] ?? []
+                    merged[uid] = peaks.enumerated().map { index, peak in
+                        max(peak, (index < previous.count ? previous[index] : 0) * 0.82)
+                    }
+                }
+                self.channelLevels = merged
+                self.levels = (self.pairLevel(self.originalRoute), self.pairLevel(self.mixRoute))
             }
         }
     }
@@ -248,6 +268,20 @@ final class Store: ObservableObject {
         meterTimer?.invalidate()
         meterTimer = nil
         levels = (0, 0)
+        channelLevels = [:]
+    }
+
+    private func pairLevel(_ route: AudioRoute?) -> Float {
+        guard let route, let channels = channelLevels[route.deviceUID], !channels.isEmpty else { return 0 }
+        let left = min(route.firstChannel, channels.count - 1)
+        let right = min(route.firstChannel + 1, channels.count - 1)
+        return max(channels[left], channels[right])
+    }
+
+    func openMicrophoneSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private static func loadRoute(_ key: String) -> AudioRoute? {
@@ -290,25 +324,70 @@ final class Store: ObservableObject {
     // MARK: - Recording
 
     func toggleRecording() {
-        isRecording ? stopRecording() : startRecording()
+        if countdownTask != nil {
+            cancelCountdown()
+        } else if isRecording {
+            stopRecording()
+        } else {
+            startCountdown()
+        }
     }
 
-    func startRecording() {
-        guard !isRecording else { return }
+    private var countdownTask: Task<Void, Never>?
+
+    /// Five seconds to get to Pro Tools and press play. Record again, or
+    /// Escape, calls it off.
+    func startCountdown() {
+        guard !isRecording, countdownTask == nil else { return }
+        guard checkReadyToRecord() else { return }
+        showFrame()
+        countdownTask = Task {
+            for remaining in stride(from: 5, through: 1, by: -1) {
+                countdown = remaining
+                frameWindow?.countdown = remaining
+                status = "Aufnahme beginnt in \(remaining) …"
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if Task.isCancelled { return }
+            }
+            countdown = nil
+            frameWindow?.countdown = nil
+            countdownTask = nil
+            startRecording()
+        }
+    }
+
+    func cancelCountdown() {
+        countdownTask?.cancel()
+        countdownTask = nil
+        countdown = nil
+        frameWindow?.countdown = nil
+        status = "Countdown abgebrochen."
+    }
+
+    private func checkReadyToRecord() -> Bool {
         guard ScreenRecorder.hasPermission else {
             requestScreenPermission()
             errorMessage = ScreenRecordError.noPermission.localizedDescription
-            return
+            return false
+        }
+        guard micPermission == .authorized else {
+            errorMessage = AudioRecordError.noPermission.localizedDescription
+            return false
         }
         guard originalRoute != nil, mixRoute != nil else {
             errorMessage = "Zuerst für Original und Final Mix je einen Toneingang wählen."
-            return
+            return false
         }
         if !audio.isArmed { armAudio() }
         guard audio.isArmed else {
             errorMessage = status
-            return
+            return false
         }
+        return true
+    }
+
+    func startRecording() {
+        guard !isRecording, checkReadyToRecord() else { return }
         showFrame()
         guard let frameWindow else { return }
 
@@ -330,7 +409,6 @@ final class Store: ObservableObject {
         status = "Aufnahme läuft — in Pro Tools abspielen."
 
         let rect = frameWindow.captureRect
-        let windowNumber = frameWindow.windowNumber
         Task {
             do {
                 try audio.startWriting(
@@ -339,7 +417,6 @@ final class Store: ObservableObject {
                 )
                 try await screen.start(
                     rect: rect,
-                    excludingWindowNumber: windowNumber,
                     to: target.appendingPathComponent(recording.screenFile)
                 )
                 pendingFolder = target

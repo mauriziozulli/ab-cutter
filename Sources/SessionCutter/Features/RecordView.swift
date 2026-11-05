@@ -15,6 +15,9 @@ struct RecordView: View {
                 if !store.hasScreenPermission {
                     permissionNote
                 }
+                if store.micPermission == .denied || store.micPermission == .restricted {
+                    micNote
+                }
                 frameSection
                 soundSection
                 filmSection
@@ -35,6 +38,14 @@ struct RecordView: View {
         Panel("Freigabe") {
             Hint("macOS muss Session Cutter die Bildschirmaufnahme erlauben. Nach dem Erlauben die App einmal neu starten.")
             Button("Freigabe anfragen") { store.requestScreenPermission() }
+                .buttonStyle(StudioButtonStyle(kind: .primary))
+        }
+    }
+
+    private var micNote: some View {
+        Panel("Ton-Freigabe") {
+            Hint("macOS lässt Session Cutter keinen Ton aufnehmen — auch die Audio Bridge zählt als «Mikrofon». Ohne Freigabe kommt nur Stille an. Freigabe erteilen, dann die App neu starten. Läuft sie aus Xcode, braucht Xcode die Freigabe.")
+            Button("Mikrofon-Einstellungen öffnen") { store.openMicrophoneSettings() }
                 .buttonStyle(StudioButtonStyle(kind: .primary))
         }
     }
@@ -131,6 +142,14 @@ struct RecordView: View {
             }
             Meter(level: level, tint: tint)
                 .padding(.leading, 16)
+            if let device, let channels = store.channelLevels[device.uid] {
+                ChannelMeters(
+                    levels: channels,
+                    selected: route.wrappedValue.map { [$0.firstChannel, $0.firstChannel + 1] } ?? [],
+                    tint: tint
+                )
+                .padding(.leading, 16)
+            }
         }
     }
 
@@ -159,9 +178,9 @@ struct RecordView: View {
         HStack(spacing: 16) {
             Button { store.toggleRecording() } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: store.isRecording ? "stop.fill" : "record.circle")
+                    Image(systemName: store.isRecording ? "stop.fill" : (store.countdown != nil ? "xmark" : "record.circle"))
                         .font(.system(size: 18, weight: .bold))
-                    Text(store.isRecording ? "Stop" : "Record")
+                    Text(store.isRecording ? "Stop" : (store.countdown != nil ? "Abbrechen" : "Record"))
                         .font(style.ui(AppType.title, weight: .semibold))
                 }
                 .foregroundStyle(.white)
@@ -172,12 +191,16 @@ struct RecordView: View {
             .buttonStyle(.plain)
             .keyboardShortcut("r", modifiers: .command)
 
-            if let start = store.recordingStart {
+            if let countdown = store.countdown {
+                Text("Start in \(countdown)")
+                    .font(style.mono(AppType.title + 4, weight: .semibold))
+                    .foregroundStyle(style.ready)
+            } else if let start = store.recordingStart {
                 Text(Clock.string(now.timeIntervalSince(start)))
                     .font(style.mono(AppType.title + 4, weight: .semibold))
                     .foregroundStyle(Tint.record)
             } else {
-                Hint("⌘R startet und stoppt. In Pro Tools abspielen, während aufgenommen wird.")
+                Hint("⌘R startet nach 5 Sekunden Countdown und stoppt. Die App selbst wird nie mit aufgenommen, auch wenn ihr Fenster über Pro Tools liegt.")
             }
         }
     }
@@ -210,5 +233,48 @@ struct Meter: View {
             }
         }
         .frame(height: 6)
+    }
+}
+
+/// One small meter per channel of a device, numbered, with the pair this side
+/// records from lit in its colour. Answers "is anything arriving, and where?"
+struct ChannelMeters: View {
+    let levels: [Float]
+    let selected: [Int]
+    let tint: Color
+    @Environment(\.studioStyle) private var style
+
+    init(levels: [Float], selected: [Int], tint: Color) {
+        self.levels = levels
+        self.selected = selected
+        self.tint = tint
+    }
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 4) {
+            ForEach(Array(levels.enumerated()), id: \.offset) { index, level in
+                let isSelected = selected.contains(index)
+                VStack(spacing: 2) {
+                    GeometryReader { geometry in
+                        ZStack(alignment: .bottom) {
+                            RoundedRectangle(cornerRadius: 2).fill(style.deep)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(level >= 0.99 ? style.error : (isSelected ? tint : style.muted))
+                                .frame(height: geometry.size.height * Self.fraction(level))
+                        }
+                    }
+                    .frame(width: 10, height: 34)
+                    Text("\(index + 1)")
+                        .font(style.mono(9, weight: isSelected ? .bold : .regular))
+                        .foregroundStyle(isSelected ? tint : style.faint)
+                }
+            }
+        }
+    }
+
+    static func fraction(_ level: Float) -> CGFloat {
+        guard level > 0 else { return 0 }
+        let db = 20 * log10(Double(level))
+        return CGFloat(min(max((db + 60) / 60, 0), 1))
     }
 }

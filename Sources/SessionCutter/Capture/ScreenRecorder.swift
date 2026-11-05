@@ -47,7 +47,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
 
     /// `rect` in global AppKit coordinates (origin bottom left of the main
     /// screen), as an NSWindow frame is given.
-    func start(rect: CGRect, excludingWindowNumber windowNumber: Int, to url: URL) async throws {
+    func start(rect: CGRect, to url: URL) async throws {
         let content: SCShareableContent
         do {
             content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
@@ -62,8 +62,12 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             throw ScreenRecordError.noDisplay
         }
 
-        let excluded = content.windows.filter { $0.windowID == CGWindowID(windowNumber) }
-        let filter = SCContentFilter(display: display, excludingWindows: excluded)
+        // Every window of this app is left out — the frame, and the main
+        // window too should it sit over Pro Tools. What lies under them is
+        // recorded as if they were not there.
+        let ownProcess = ProcessInfo.processInfo.processIdentifier
+        let ownApps = content.applications.filter { $0.processID == ownProcess }
+        let filter = SCContentFilter(display: display, excludingApplications: ownApps, exceptingWindows: [])
 
         // Display-local, top-left origin, in points.
         let local = CGRect(
