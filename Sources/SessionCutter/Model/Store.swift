@@ -822,7 +822,7 @@ final class Store: ObservableObject {
 
         if let filmURL = snapshot.filmURL, snapshot.stillFilmOriginal || snapshot.stillWeb {
             for (index, still) in stills.enumerated() {
-                let filmTime = still.time + snapshot.filmOffset
+                let filmTime = still.time
                 guard filmTime >= 0, let frame = try? await Exporter.filmFrame(url: filmURL, at: filmTime) else { continue }
                 if snapshot.stillFilmOriginal {
                     try Exporter.write(
