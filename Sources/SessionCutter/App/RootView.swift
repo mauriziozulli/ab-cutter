@@ -70,6 +70,13 @@ struct RootView: View {
 
             Rectangle().fill(style.line).frame(width: 1, height: 18)
 
+            Button { store.toggleFrame() } label: {
+                Label(store.frameVisible ? "Rahmen aus" : "Rahmen", systemImage: "viewfinder")
+            }
+            .buttonStyle(StudioButtonStyle(kind: store.frameVisible ? .counterpoint : .normal))
+            .disabled(store.isRecording)
+            .help("Den Aufnahmerahmen über Pro Tools zeigen oder ausblenden")
+
             Button { store.presentFilmPicker() } label: {
                 Label(store.session.filmURL == nil ? "Film …" : store.session.filmURL!.lastPathComponent, systemImage: "film")
                     .lineLimit(1)
@@ -94,6 +101,8 @@ struct RootView: View {
             Menu {
                 Button("Neue Session") { store.newSession() }
                 Button("Session öffnen …") { store.presentOpenSession() }
+                Button("Speichern") { store.saveSession() }
+                Button("Speichern unter …") { store.saveSessionAs() }
                 Divider()
                 Button("Im Finder zeigen") { store.revealFolder() }
                     .disabled(store.folder == nil)
@@ -184,8 +193,8 @@ struct RootView: View {
             case "s": store.addStillAtPlayhead(); return nil
             case "i": store.markIn(); return nil
             case "o": store.markOut(); return nil
-            case "t": store.zoom = min(store.zoom * 1.6, 60); return nil
-            case "r": store.zoom = max(store.zoom / 1.6, 1); return nil
+            case "t": store.zoom = min(store.zoom * 1.6, Store.zoomRange.upperBound); return nil
+            case "r": store.zoom = max(store.zoom / 1.6, Store.zoomRange.lowerBound); return nil
             default: return event
             }
         }

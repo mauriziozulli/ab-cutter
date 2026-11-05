@@ -38,11 +38,17 @@ struct TimelineView: View {
 
     private var duration: Double { max(store.session.duration, 0.1) }
 
-    private var visible: Double { max(duration / max(store.zoom, 1), 0.5) }
+    /// What zoom 1 shows: everything there is, and never less than ten
+    /// seconds, so a fresh short take still has room beside it.
+    private var extent: Double { max(store.session.duration, 10) }
+
+    /// Below zoom 1 the view runs past the end into empty time — room to
+    /// park the playhead and record the next take there.
+    private var visible: Double { max(extent / min(max(store.zoom, Store.zoomRange.lowerBound), Store.zoomRange.upperBound), 0.5) }
 
     private var windowStart: Double {
-        guard visible < duration else { return 0 }
-        return min(max(store.currentTime - visible / 2, 0), duration - visible)
+        guard visible < extent else { return 0 }
+        return max(store.currentTime - visible / 2, 0)
     }
 
     private var totalHeight: CGFloat {
@@ -102,7 +108,12 @@ struct TimelineView: View {
             Spacer()
 
             Image(systemName: "minus.magnifyingglass").foregroundStyle(style.faint)
-            Slider(value: $store.zoom, in: 1...60).controlSize(.mini).frame(width: 130)
+            Slider(
+                value: Binding(get: { log2(store.zoom) }, set: { store.zoom = pow(2, $0) }),
+                in: log2(Store.zoomRange.lowerBound)...log2(Store.zoomRange.upperBound)
+            )
+            .controlSize(.mini)
+            .frame(width: 150)
             Image(systemName: "plus.magnifyingglass").foregroundStyle(style.faint)
         }
         .buttonStyle(StudioButtonStyle())
@@ -244,7 +255,7 @@ struct TimelineView: View {
     }
 
     private func drawRuler(_ context: GraphicsContext, width: CGFloat) {
-        let candidates: [Double] = [0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300]
+        let candidates: [Double] = [0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1200]
         let step = candidates.first { $0 >= visible / 8 } ?? 600
         var tick = (windowStart / step).rounded(.down) * step
         while tick <= windowStart + visible {

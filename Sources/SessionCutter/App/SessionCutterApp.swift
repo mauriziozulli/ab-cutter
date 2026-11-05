@@ -55,6 +55,11 @@ struct SessionCommands: Commands {
                 .disabled(store.isRecording)
         }
         CommandGroup(replacing: .saveItem) {
+            Button("Speichern") { store.saveSession() }
+                .keyboardShortcut("s", modifiers: .command)
+            Button("Speichern unter …") { store.saveSessionAs() }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+            Divider()
             Button("Exportieren") { store.export() }
                 .keyboardShortcut("e", modifiers: .command)
                 .disabled(!store.session.hasTakes || store.isExporting)

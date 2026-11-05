@@ -61,6 +61,9 @@ final class Store: ObservableObject {
         didSet { if oldValue != previewFormat { rebuildPreview() } }
     }
     @Published var zoom: Double = 1
+    /// Out to a tenth (ten times the content, empty time to record into),
+    /// in to sixty times.
+    static let zoomRange: ClosedRange<Double> = 0.1...60
     @Published var selection: MarkerSelection?
     /// Envelopes of each take's two mixes, by take.
     @Published private(set) var waveforms: [UUID: (original: Waveform?, mix: Waveform?)] = [:]
@@ -89,8 +92,13 @@ final class Store: ObservableObject {
         ) { [weak self] time in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                self.currentTime = CMTimeGetSeconds(time) + self.previewOrigin
                 self.isPlaying = self.player.rate != 0
+                // Only playback moves the playhead. A paused seek sets it
+                // itself — also into empty time past the end, where the
+                // player has nothing to show and would report its last frame.
+                if self.isPlaying {
+                    self.currentTime = CMTimeGetSeconds(time) + self.previewOrigin
+                }
             }
         }
         frameObserver = NotificationCenter.default.addObserver(
@@ -175,6 +183,49 @@ final class Store: ObservableObject {
             try? await Task.sleep(nanoseconds: 400_000_000)
             guard !Task.isCancelled else { return }
             self?.save()
+        }
+    }
+
+    /// ⌘S. Sessions save themselves as they change; this makes it explicit,
+    /// and asks for a place when the session has none yet.
+    func saveSession() {
+        guard folder != nil else {
+            saveSessionAs()
+            return
+        }
+        save()
+        status = "Session gesichert."
+    }
+
+    /// Writes the session — takes included — to a new folder of the user's
+    /// choosing and carries on there. The old folder is left as it was.
+    func saveSessionAs() {
+        guard !isRecording else { return }
+        let panel = NSSavePanel()
+        panel.directoryURL = Self.sessionsRoot
+        panel.nameFieldStringValue = session.title.isEmpty ? (folder?.lastPathComponent ?? "Session") : session.title
+        panel.message = "Die Session wird als Ordner gesichert, mit allen Takes."
+        panel.prompt = "Sichern"
+        guard panel.runModal() == .OK, let target = panel.url else { return }
+
+        let manager = FileManager.default
+        do {
+            if manager.fileExists(atPath: target.path) {
+                errorMessage = "Dort liegt schon etwas mit diesem Namen."
+                return
+            }
+            try manager.createDirectory(at: target, withIntermediateDirectories: true)
+            if let folder {
+                for item in try manager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) {
+                    try manager.copyItem(at: item, to: target.appendingPathComponent(item.lastPathComponent))
+                }
+            }
+            folder = target
+            save()
+            UserDefaults.standard.set(target.path, forKey: Self.lastSessionKey)
+            status = "Session als «\(target.lastPathComponent)» gesichert."
+        } catch {
+            errorMessage = "Die Session konnte nicht gesichert werden. \(error.localizedDescription)"
         }
     }
 
@@ -586,9 +637,27 @@ final class Store: ObservableObject {
         session.takes[index].start += Double(frames) / 25
     }
 
+    /// Takes the take out, and with it every switch and still that only it
+    /// was carrying — what lay under another take stays.
     func deleteTake(_ id: UUID) {
-        session.takes.removeAll { $0.id == id }
+        guard let take = session.takes.first(where: { $0.id == id }) else { return }
+        var next = session
+        next.takes.removeAll { $0.id == id }
+        let remaining = next.takes
+        func orphaned(_ time: Double) -> Bool {
+            time >= take.start - 0.001 && time <= take.end + 0.001
+                && !remaining.contains { time >= $0.start && time <= $0.end }
+        }
+        next.switches.removeAll(where: orphaned)
+        next.stills.removeAll { orphaned($0.time) }
+        if remaining.isEmpty {
+            next.inPoint = 0
+            next.outPoint = 0
+        }
+        selection = nil
+        session = next
         waveforms[id] = nil
+        status = "Take entfernt, mit seinen Wechseln und Stills. Die Dateien bleiben im Session-Ordner."
     }
 
     // MARK: - Preview
@@ -637,10 +706,10 @@ final class Store: ObservableObject {
     }
 
     func seek(to seconds: Double) {
-        let clamped = min(max(seconds, 0), max(session.duration, 0))
-        currentTime = clamped
+        currentTime = max(seconds, 0)
+        let playable = min(currentTime, max(session.duration, 0))
         player.seek(
-            to: CMTime(seconds: clamped - previewOrigin, preferredTimescale: 600),
+            to: CMTime(seconds: playable - previewOrigin, preferredTimescale: 600),
             toleranceBefore: .zero,
             toleranceAfter: .zero
         )
