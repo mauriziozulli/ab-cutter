@@ -125,9 +125,53 @@ struct EditView: View {
     }
 
     private var textPanel: some View {
-        Panel("Text") {
-            field("Filmtitel", text: $store.session.title)
+        Panel("Titel im Filmbild") {
+            Picker("", selection: $store.session.titleStyle.mode) {
+                ForEach(TitleStyle.Mode.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            switch store.session.titleStyle.mode {
+            case .text:
+                field("Filmtitel", text: $store.session.title)
+                Picker("Schrift", selection: $store.session.titleStyle.face) {
+                    ForEach(TitleStyle.Face.allCases) { Text($0.title).tag($0) }
+                }
+                .controlSize(.small)
+            case .image:
+                HStack {
+                    Text(store.session.titleStyle.imagePath.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "Kein Bild gewählt")
+                        .font(style.mono(AppType.small))
+                        .foregroundStyle(store.session.titleStyle.imagePath == nil ? style.faint : style.text)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Button("PNG wählen …") { store.presentTitleImagePicker() }
+                        .buttonStyle(StudioButtonStyle())
+                        .controlSize(.small)
+                }
+                HStack(spacing: 8) {
+                    Text("Grösse")
+                        .foregroundStyle(style.muted)
+                    Slider(value: $store.session.titleStyle.imageScale, in: 0.2...1)
+                        .controlSize(.mini)
+                    Text("\(Int(store.session.titleStyle.imageScale * 100)) %")
+                        .font(style.mono(AppType.small))
+                        .foregroundStyle(style.faint)
+                        .frame(width: 40, alignment: .trailing)
+                }
+                field("Filmtitel (für Dateinamen)", text: $store.session.title)
+            }
+
             field("Untertitel, z. B. DIALOGUE CLEAN UP", text: $store.session.subtitle)
+            Picker("Lage", selection: $store.session.titleStyle.position) {
+                ForEach(TitleStyle.Position.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .controlSize(.small)
+
+            StudioHairline(soft: true)
             HStack(spacing: 8) {
                 Circle().fill(Tint.original).frame(width: 8, height: 8)
                 field("Label A", text: $store.session.labelOriginal)
@@ -136,7 +180,7 @@ struct EditView: View {
                 Circle().fill(Tint.mix).frame(width: 8, height: 8)
                 field("Label B", text: $store.session.labelMix)
             }
-            Hint("Der Titel steht im Filmbild oben, das Label wechselt mit dem Ton über Pro Tools.")
+            Hint("Das Label über Pro Tools wechselt mit dem Ton. Untertitel in Space Mono, Titel in den Hausschriften oder als Original-Titeldesign (PNG mit transparentem Grund).")
         }
     }
 

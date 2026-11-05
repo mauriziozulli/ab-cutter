@@ -94,6 +94,57 @@ struct TakeSegment {
     var to: Double
 }
 
+/// How the film's title is set in the film band.
+struct TitleStyle: Codable, Equatable {
+    enum Mode: String, Codable, CaseIterable, Identifiable {
+        /// Typed, in the house faces.
+        case text
+        /// The film's own title design, as a transparent PNG.
+        case image
+
+        var id: String { rawValue }
+        var title: String { self == .text ? "Text" : "Titel-PNG" }
+    }
+
+    enum Face: String, Codable, CaseIterable, Identifiable {
+        /// Archivo Black — the lead face, set in capitals.
+        case fett
+        /// Bodoni Moda — the counter-voice, mixed case.
+        case serif
+
+        var id: String { rawValue }
+        var title: String { self == .fett ? "Archivo Black" : "Bodoni Moda" }
+    }
+
+    enum Position: String, Codable, CaseIterable, Identifiable {
+        case bottom
+        case centre
+
+        var id: String { rawValue }
+        var title: String { self == .bottom ? "Unten" : "Mitte" }
+    }
+
+    var mode: Mode = .text
+    var face: Face = .fett
+    /// The PNG, read where it lies — never copied, never changed.
+    var imagePath: String?
+    /// Width of the PNG as a share of the band, 0.2 … 1.
+    var imageScale: Double = 0.7
+    var position: Position = .bottom
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        self = TitleStyle()
+        let box = try decoder.container(keyedBy: CodingKeys.self)
+        if let v = try? box.decode(Mode.self, forKey: .mode) { mode = v }
+        if let v = try? box.decode(Face.self, forKey: .face) { face = v }
+        if let v = try? box.decode(String.self, forKey: .imagePath) { imagePath = v }
+        if let v = try? box.decode(Double.self, forKey: .imageScale) { imageScale = v }
+        if let v = try? box.decode(Position.self, forKey: .position) { position = v }
+    }
+}
+
 /// A point the stills are rendered from.
 struct StillMarker: Codable, Hashable, Identifiable {
     var id = UUID()
@@ -111,6 +162,7 @@ struct Session: Codable {
 
     var title: String = ""
     var subtitle: String = ""
+    var titleStyle = TitleStyle()
     var labelOriginal: String = "Original"
     var labelMix: String = "Final Mix"
 
@@ -149,6 +201,7 @@ struct Session: Codable {
         if let v = try? box.decode(Double.self, forKey: .filmDuration) { filmDuration = v }
         if let v = try? box.decode(String.self, forKey: .title) { title = v }
         if let v = try? box.decode(String.self, forKey: .subtitle) { subtitle = v }
+        if let v = try? box.decode(TitleStyle.self, forKey: .titleStyle) { titleStyle = v }
         if let v = try? box.decode(String.self, forKey: .labelOriginal) { labelOriginal = v }
         if let v = try? box.decode(String.self, forKey: .labelMix) { labelMix = v }
         if let v = try? box.decode(Double.self, forKey: .inPoint) { inPoint = v }

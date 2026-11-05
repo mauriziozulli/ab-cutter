@@ -160,6 +160,7 @@ final class Store: ObservableObject {
         let layoutChanged = old.switches != session.switches
             || old.title != session.title
             || old.subtitle != session.subtitle
+            || old.titleStyle != session.titleStyle
             || old.labelOriginal != session.labelOriginal
             || old.labelMix != session.labelMix
             || old.filmPath != session.filmPath
@@ -501,6 +502,7 @@ final class Store: ObservableObject {
         next.filmDuration = session.filmDuration
         next.title = session.title
         next.subtitle = session.subtitle
+        next.titleStyle = session.titleStyle
         next.labelOriginal = session.labelOriginal
         next.labelMix = session.labelMix
         next.formats = session.formats
@@ -530,6 +532,17 @@ final class Store: ObservableObject {
             session.filmDuration = duration.isFinite ? duration : 0
             syncAllTakes()
         }
+    }
+
+    /// The film's own title design. A PNG with transparency sits on the
+    /// picture; anything else is laid on as it is.
+    func presentTitleImagePicker() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png, .tiff, .image]
+        panel.message = "Das Titeldesign des Films wählen — am besten ein PNG mit transparentem Grund."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        session.titleStyle.imagePath = url.path
+        session.titleStyle.mode = .image
     }
 
     func syncAllTakes() {
