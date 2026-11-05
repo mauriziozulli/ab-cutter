@@ -1,17 +1,15 @@
 import SwiftUI
 
-/// The record page: frame, two inputs, one button.
+/// The record inspector on the left: what is framed, what comes in, and
+/// whether it arrives. Record itself sits in the title bar.
 @MainActor
-struct RecordView: View {
+struct RecordPanel: View {
     @ObservedObject var store: Store
     @Environment(\.studioStyle) private var style
-    @State private var now = Date()
-
-    private let clock = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 if !store.hasScreenPermission {
                     permissionNote
                 }
@@ -20,14 +18,11 @@ struct RecordView: View {
                 }
                 frameSection
                 soundSection
-                filmSection
-                recordButton
+                Hint("Record nimmt ab dem Abspielkopf auf — nach 5 Sekunden Countdown. Ein neuer Take ersetzt ab seiner Stelle, was dort lag. Mit Film setzt der Ton jeden Take genau an seine Filmstelle.")
             }
-            .frame(maxWidth: 560)
-            .padding(28)
-            .frame(maxWidth: .infinity)
+            .padding(14)
         }
-        .onReceive(clock) { now = $0 }
+        .background(style.bg)
         .onAppear {
             store.refreshDevices()
             store.armAudio()
@@ -53,7 +48,7 @@ struct RecordView: View {
     // MARK: - 1 Frame
 
     private var frameSection: some View {
-        Panel("1  Rahmen über Pro Tools") {
+        Panel("Rahmen über Pro Tools") {
             HStack {
                 Button(store.frameVisible ? "Rahmen ausblenden" : "Rahmen zeigen") { store.toggleFrame() }
                     .buttonStyle(StudioButtonStyle())
@@ -72,7 +67,7 @@ struct RecordView: View {
     // MARK: - 2 Sound
 
     private var soundSection: some View {
-        Panel("2  Ton aus Pro Tools") {
+        Panel("Ton aus Pro Tools") {
             routeRow(
                 title: "Original",
                 tint: Tint.original,
@@ -85,8 +80,8 @@ struct RecordView: View {
                 route: $store.mixRoute,
                 level: store.levels.mix
             )
+            Hint("Ein Gerät mit vier Kanälen (1–2 Original, 3–4 Mix) oder zwei Geräte wie Audio Bridge 2A und 2B.")
             HStack {
-                Hint("Ein Gerät mit vier Kanälen (1–2 Original, 3–4 Mix) oder zwei Geräte wie Audio Bridge 2A und 2B.")
                 Spacer()
                 Button("Geräte neu lesen") {
                     store.refreshDevices()
@@ -106,7 +101,7 @@ struct RecordView: View {
                 Text(title)
                     .font(style.ui(AppType.body, weight: .semibold))
                     .foregroundStyle(style.text)
-                    .frame(width: 80, alignment: .leading)
+                    .frame(width: 66, alignment: .leading)
 
                 Picker("", selection: Binding<String>(
                     get: { route.wrappedValue?.deviceUID ?? "" },
@@ -136,7 +131,7 @@ struct RecordView: View {
                         }
                     }
                     .labelsHidden()
-                    .frame(width: 120)
+                    .frame(width: 96)
                     .disabled(store.isRecording)
                 }
             }
@@ -153,57 +148,6 @@ struct RecordView: View {
         }
     }
 
-    // MARK: - 3 Film
-
-    private var filmSection: some View {
-        Panel("3  Film (optional, auch später)") {
-            HStack {
-                Text(store.session.filmURL?.lastPathComponent ?? "Kein Film gewählt")
-                    .font(style.mono(AppType.meta))
-                    .foregroundStyle(store.session.filmURL == nil ? style.faint : style.text)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer()
-                Button("Film wählen …") { store.presentFilmPicker() }
-                    .buttonStyle(StudioButtonStyle())
-                    .disabled(store.isRecording)
-            }
-            Hint("Das Bild oben im Post kommt aus der Filmdatei, nicht vom Bildschirm — volle Qualität. Nach der Aufnahme wird es automatisch am Originalton synchronisiert.")
-        }
-    }
-
-    // MARK: - Record
-
-    private var recordButton: some View {
-        HStack(spacing: 16) {
-            Button { store.toggleRecording() } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: store.isRecording ? "stop.fill" : (store.countdown != nil ? "xmark" : "record.circle"))
-                        .font(.system(size: 18, weight: .bold))
-                    Text(store.isRecording ? "Stop" : (store.countdown != nil ? "Abbrechen" : "Record"))
-                        .font(style.ui(AppType.title, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 26)
-                .frame(height: 46)
-                .background(Tint.record, in: RoundedRectangle(cornerRadius: style.cardRadius, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut("r", modifiers: .command)
-
-            if let countdown = store.countdown {
-                Text("Start in \(countdown)")
-                    .font(style.mono(AppType.title + 4, weight: .semibold))
-                    .foregroundStyle(style.ready)
-            } else if let start = store.recordingStart {
-                Text(Clock.string(now.timeIntervalSince(start)))
-                    .font(style.mono(AppType.title + 4, weight: .semibold))
-                    .foregroundStyle(Tint.record)
-            } else {
-                Hint("⌘R startet nach 5 Sekunden Countdown und stoppt. Die App selbst wird nie mit aufgenommen, auch wenn ihr Fenster über Pro Tools liegt.")
-            }
-        }
-    }
 }
 
 /// A horizontal peak meter, -60 … 0 dBFS.

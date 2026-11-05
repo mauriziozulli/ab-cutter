@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// The recording laid out flat: a ruler, the A/B lane with its switches, the
+/// The session laid out flat: a ruler with In/Out, the takes, the A/B lane, the
 /// stills lane, and both mixes as waveforms.
 ///
 /// Switches and stills are flags that hang in their own lanes and slide by
@@ -13,7 +13,8 @@ struct TimelineView: View {
     @ObservedObject var store: Store
     @Environment(\.studioStyle) private var style
 
-    private let rulerHeight: CGFloat = 22
+    private let rulerHeight: CGFloat = 24
+    private let takeLaneHeight: CGFloat = 16
     private let switchLaneHeight: CGFloat = 30
     private let stillLaneHeight: CGFloat = 24
     private let waveLaneHeight: CGFloat = 44
@@ -24,7 +25,16 @@ struct TimelineView: View {
         var moved = false
     }
 
+    private enum Edge { case inPoint, outPoint }
+
+    private struct EdgeDrag {
+        var edge: Edge
+        var origin: Double
+    }
+
     @State private var drag: Drag?
+    @State private var edgeDrag: EdgeDrag?
+    @State private var scrubbing = false
 
     private var duration: Double { max(store.session.duration, 0.1) }
 
@@ -36,7 +46,7 @@ struct TimelineView: View {
     }
 
     private var totalHeight: CGFloat {
-        rulerHeight + switchLaneHeight + stillLaneHeight + waveLaneHeight * 2
+        rulerHeight + takeLaneHeight + switchLaneHeight + stillLaneHeight + waveLaneHeight * 2
     }
 
     var body: some View {
@@ -48,7 +58,8 @@ struct TimelineView: View {
                 ZStack(alignment: .topLeading) {
                     Canvas { context, size in draw(context, width: size.width) }
                     VStack(spacing: 0) {
-                        scrubStrip(width: width, height: rulerHeight)
+                        rulerStrip(width: width)
+                        scrubStrip(width: width, height: takeLaneHeight)
                         markerStrip(width: width, height: switchLaneHeight, lane: .switches)
                         markerStrip(width: width, height: stillLaneHeight, lane: .stills)
                         scrubStrip(width: width, height: waveLaneHeight * 2)
@@ -116,7 +127,8 @@ struct TimelineView: View {
     private func draw(_ context: GraphicsContext, width: CGFloat) {
         drawRuler(context, width: width)
 
-        let switchTop = rulerHeight
+        let takeTop = rulerHeight
+        let switchTop = takeTop + takeLaneHeight
         let stillTop = switchTop + switchLaneHeight
         let waveTop = stillTop + stillLaneHeight
         let session = store.session
@@ -174,10 +186,29 @@ struct TimelineView: View {
             )
         }
 
-        // Waveforms.
-        if let recording = session.recording {
-            drawWave(context, store.waveforms.original, lead: recording.originalLead, top: waveTop, tint: Tint.original, width: width)
-            drawWave(context, store.waveforms.mix, lead: recording.mixLead, top: waveTop + waveLaneHeight, tint: Tint.mix, width: width)
+        // Takes, and under them each take's two mixes where it plays.
+        let segments = session.segments()
+        let numbers = Dictionary(uniqueKeysWithValues: session.takes.enumerated().map { ($1.id, $0 + 1) })
+        for segment in segments {
+            let from = x(segment.from, width: width)
+            let to = x(segment.to, width: width)
+            guard to > 0, from < width else { continue }
+            let rect = CGRect(x: from, y: takeTop + 2, width: max(to - from, 1), height: takeLaneHeight - 4)
+            context.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(style.raised))
+            if rect.width > 40 {
+                context.draw(
+                    Text("Take \(numbers[segment.take.id] ?? 0)")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(style.muted),
+                    at: CGPoint(x: max(rect.minX, 0) + 5, y: rect.midY),
+                    anchor: .leading
+                )
+            }
+            let waves = store.waveforms[segment.take.id]
+            drawWave(context, waves?.original ?? nil, segment: segment, lead: segment.take.originalLead,
+                     top: waveTop, tint: Tint.original, width: width)
+            drawWave(context, waves?.mix ?? nil, segment: segment, lead: segment.take.mixLead,
+                     top: waveTop + waveLaneHeight, tint: Tint.mix, width: width)
         }
 
         // Outside In/Out.
@@ -190,6 +221,25 @@ struct TimelineView: View {
         }
         if outX < width {
             context.fill(Path(CGRect(x: outX, y: rulerHeight, width: width - outX, height: totalHeight)), with: .color(shade))
+        }
+
+        // In and Out as handles on the ruler, to be dragged like an editor's.
+        let accent = style.ready
+        if inX >= -8, inX <= width + 8 {
+            var bracket = Path()
+            bracket.move(to: CGPoint(x: inX + 7, y: 2))
+            bracket.addLine(to: CGPoint(x: inX, y: 2))
+            bracket.addLine(to: CGPoint(x: inX, y: rulerHeight))
+            bracket.addLine(to: CGPoint(x: inX + 7, y: rulerHeight))
+            context.stroke(bracket, with: .color(accent), lineWidth: 2.5)
+        }
+        if outX >= -8, outX <= width + 8 {
+            var bracket = Path()
+            bracket.move(to: CGPoint(x: outX - 7, y: 2))
+            bracket.addLine(to: CGPoint(x: outX, y: 2))
+            bracket.addLine(to: CGPoint(x: outX, y: rulerHeight))
+            bracket.addLine(to: CGPoint(x: outX - 7, y: rulerHeight))
+            context.stroke(bracket, with: .color(accent), lineWidth: 2.5)
         }
     }
 
@@ -221,6 +271,7 @@ struct TimelineView: View {
     private func drawWave(
         _ context: GraphicsContext,
         _ waveform: Waveform?,
+        segment: TakeSegment,
         lead: Double,
         top: CGFloat,
         tint: Color,
@@ -228,21 +279,26 @@ struct TimelineView: View {
     ) {
         let mid = top + waveLaneHeight / 2
         let half = waveLaneHeight / 2 - 4
+        let first = max(Int(x(segment.from, width: width).rounded(.down)), 0)
+        let last = min(Int(x(segment.to, width: width).rounded(.up)), Int(width))
+        guard last > first else { return }
         guard let waveform else {
             context.stroke(
                 Path { path in
-                    path.move(to: CGPoint(x: 0, y: mid))
-                    path.addLine(to: CGPoint(x: width, y: mid))
+                    path.move(to: CGPoint(x: CGFloat(first), y: mid))
+                    path.addLine(to: CGPoint(x: CGFloat(last), y: mid))
                 },
                 with: .color(tint.opacity(0.3)),
                 lineWidth: 1
             )
             return
         }
+        // File time = timeline time − take start − lead.
+        let shift = segment.take.start + lead
         var path = Path()
-        for column in 0..<Int(width) {
-            let start = seconds(CGFloat(column), width: width) - lead
-            let end = seconds(CGFloat(column + 1), width: width) - lead
+        for column in first..<last {
+            let start = seconds(CGFloat(column), width: width) - shift
+            let end = seconds(CGFloat(column + 1), width: width) - shift
             let height = CGFloat(min(max(waveform.peak(from: start, to: end), 0), 1)) * half
             guard height > 0.3 else { continue }
             path.move(to: CGPoint(x: CGFloat(column), y: mid - height))
@@ -270,6 +326,45 @@ struct TimelineView: View {
                     Self.releaseKeyboard()
                     store.seek(to: seconds(value.location.x, width: width))
                 }
+            )
+    }
+
+    /// The ruler: grab an In or Out bracket to move it, anywhere else scrubs.
+    private func rulerStrip(width: CGFloat) -> some View {
+        Color.clear
+            .frame(height: rulerHeight)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if edgeDrag == nil, !scrubbing {
+                            Self.releaseKeyboard()
+                            let range = store.session.exportRange
+                            let inX = x(range.lowerBound, width: width)
+                            let outX = x(range.upperBound, width: width)
+                            let start = value.startLocation.x
+                            if abs(start - inX) <= 9, abs(start - inX) <= abs(start - outX) {
+                                edgeDrag = EdgeDrag(edge: .inPoint, origin: range.lowerBound)
+                            } else if abs(start - outX) <= 9 {
+                                edgeDrag = EdgeDrag(edge: .outPoint, origin: range.upperBound)
+                            } else {
+                                scrubbing = true
+                            }
+                        }
+                        if let edge = edgeDrag {
+                            let time = edge.origin + Double(value.translation.width / width) * visible
+                            switch edge.edge {
+                            case .inPoint: store.setIn(time)
+                            case .outPoint: store.setOut(time)
+                            }
+                        } else {
+                            store.seek(to: seconds(value.location.x, width: width))
+                        }
+                    }
+                    .onEnded { _ in
+                        edgeDrag = nil
+                        scrubbing = false
+                    }
             )
     }
 

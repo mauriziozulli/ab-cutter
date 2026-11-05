@@ -69,7 +69,6 @@ struct EditView: View {
                 filmPanel
                 textPanel
                 exportPanel
-                sessionPanel
             }
             .padding(14)
         }
@@ -77,42 +76,50 @@ struct EditView: View {
     }
 
     private var filmPanel: some View {
-        Panel("Film") {
-            HStack {
-                Text(store.session.filmURL?.lastPathComponent ?? "Kein Film")
-                    .font(style.mono(AppType.small))
-                    .foregroundStyle(store.session.filmURL == nil ? style.faint : style.text)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer()
-                Button("Wählen …") { store.presentFilmPicker() }
-                    .buttonStyle(StudioButtonStyle())
-                    .controlSize(.small)
+        Panel("Takes") {
+            if store.session.takes.isEmpty {
+                Hint("Noch keine Aufnahme. Abspielkopf setzen, Record.")
             }
-            if store.session.filmURL != nil {
+            ForEach(Array(store.session.takes.enumerated()), id: \.element.id) { index, take in
+                HStack(spacing: 8) {
+                    Text("\(index + 1)")
+                        .font(style.mono(AppType.small, weight: .bold))
+                        .foregroundStyle(style.text)
+                        .frame(width: 18)
+                    Text("\(Clock.string(take.start)) – \(Clock.string(take.end))")
+                        .font(style.mono(AppType.small))
+                        .foregroundStyle(style.text)
+                    Spacer()
+                    if let confidence = take.syncConfidence {
+                        Text(String(format: "%.0f %%", confidence * 100))
+                            .font(style.mono(AppType.small))
+                            .foregroundStyle(confidence < 0.4 ? style.warning : style.passed)
+                            .help("Übereinstimmung mit dem Filmton")
+                    }
+                    Button { store.seek(to: take.start) } label: { Image(systemName: "arrow.right.to.line") }
+                        .help("Zum Anfang des Takes")
+                    Button { store.deleteTake(take.id) } label: { Image(systemName: "trash") }
+                        .help("Take aus der Session nehmen (die Dateien bleiben)")
+                }
+                .buttonStyle(StudioButtonStyle(kind: .quiet))
+                .controlSize(.small)
+            }
+
+            if store.session.filmURL != nil, store.session.hasTakes {
                 HStack(spacing: 6) {
-                    Button(store.isSyncing ? "Synchronisiere …" : "Am Originalton syncen") { store.syncFilm() }
-                        .buttonStyle(StudioButtonStyle())
+                    Button(store.isSyncing ? "Synchronisiere …" : "Am Originalton syncen") { store.syncAllTakes() }
                         .disabled(store.isSyncing)
                     Spacer()
-                    Button { store.nudgeFilm(frames: -1) } label: { Image(systemName: "chevron.left") }
-                        .help("Film ein Bild früher")
-                    Button { store.nudgeFilm(frames: 1) } label: { Image(systemName: "chevron.right") }
-                        .help("Film ein Bild später")
+                    Button { store.nudgeTake(frames: -1) } label: { Image(systemName: "chevron.left") }
+                        .help("Take am Abspielkopf ein Bild früher")
+                    Button { store.nudgeTake(frames: 1) } label: { Image(systemName: "chevron.right") }
+                        .help("Take am Abspielkopf ein Bild später")
                 }
                 .buttonStyle(StudioButtonStyle())
                 .controlSize(.small)
-
-                if let confidence = store.session.syncConfidence {
-                    Hint(String(
-                        format: "Versatz %+.2f s · Übereinstimmung %.0f %%%@",
-                        store.session.filmOffset,
-                        confidence * 100,
-                        confidence < 0.4 ? " — bitte prüfen" : ""
-                    ))
-                } else {
-                    Hint(String(format: "Versatz %+.2f s · noch nicht gesynct", store.session.filmOffset))
-                }
+            }
+            if store.session.filmURL == nil {
+                Hint("Ohne Film bleibt die obere Hälfte leer. «Film …» oben wählt ihn.")
             }
         }
     }
@@ -176,19 +183,5 @@ struct EditView: View {
             Hint("Nur zwischen In und Out. Ablage im Ordner «Export» der Session.")
         }
         .font(style.ui(AppType.small + 1))
-    }
-
-    private var sessionPanel: some View {
-        Panel("Session") {
-            HStack {
-                Button("Neue Aufnahme") { store.enterRecordPhase() }
-                Button("Öffnen …") { store.presentOpenSession() }
-                Spacer()
-                Button { store.revealFolder() } label: { Image(systemName: "folder") }
-                    .help("Session-Ordner im Finder zeigen")
-            }
-            .buttonStyle(StudioButtonStyle())
-            .controlSize(.small)
-        }
     }
 }

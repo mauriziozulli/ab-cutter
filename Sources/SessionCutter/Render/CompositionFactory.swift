@@ -51,32 +51,13 @@ enum CompositionFactory {
         format: OutputFormat,
         range: ClosedRange<Double>
     ) async throws -> BuiltPost {
-        guard let recording = session.recording else { throw BuildError.noRecording }
         let overlays = OverlayFactory.overlays(for: format, session: session)
-
         let composition = AVMutableComposition()
-        let length = range.upperBound - range.lowerBound
+        let length = max(range.upperBound - range.lowerBound, 0.04)
 
-        // Screen.
-        let screenURL = folder.appendingPathComponent(recording.screenFile)
-        let screenAsset = AVURLAsset(url: screenURL, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
-        guard let screenSource = try await screenAsset.loadTracks(withMediaType: .video).first else {
-            throw BuildError.unreadable(recording.screenFile)
-        }
-        guard let screenTrack = composition.addMutableTrack(
-            withMediaType: .video,
-            preferredTrackID: kCMPersistentTrackID_Invalid
-        ) else { throw BuildError.trackFailed }
-        let screenDuration = CMTimeGetSeconds(try await screenAsset.load(.duration))
-        try insert(
-            screenSource, into: screenTrack,
-            sourceStart: range.lowerBound, sourceDuration: screenDuration,
-            lead: 0, range: range
-        )
-
-        // Film, at its offset.
+        // Film: film time is timeline time.
         var filmTrackID = kCMPersistentTrackID_Invalid
-        var frameDuration = CMTime(value: 1, timescale: 30)
+        var frameDuration = CMTime(value: 1, timescale: 25)
         if let filmURL = session.filmURL {
             let filmAsset = AVURLAsset(url: filmURL, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
             if let filmSource = try? await filmAsset.loadTracks(withMediaType: .video).first,
@@ -85,14 +66,12 @@ enum CompositionFactory {
                    preferredTrackID: kCMPersistentTrackID_Invalid
                ) {
                 let filmDuration = CMTimeGetSeconds(try await filmAsset.load(.duration))
-                // Film time f sits at recording time f - offset.
-                try insert(
+                try place(
                     filmSource, into: filmTrack,
-                    sourceStart: range.lowerBound + session.filmOffset, sourceDuration: filmDuration,
-                    lead: -session.filmOffset, range: range
+                    sourceFrom: range.lowerBound, sourceTo: min(range.upperBound, filmDuration),
+                    at: 0
                 )
                 if filmTrack.segments.isEmpty {
-                    // The range lies outside the film: no picture to show.
                     composition.removeTrack(filmTrack)
                 } else {
                     filmTrackID = filmTrack.trackID
@@ -103,45 +82,79 @@ enum CompositionFactory {
             }
         }
 
-        // Both mixes.
+        // Takes: screen and both mixes, segment by segment, latest on top.
+        let segments = session.segments().compactMap { segment -> TakeSegment? in
+            var clipped = segment
+            clipped.from = max(segment.from, range.lowerBound)
+            clipped.to = min(segment.to, range.upperBound)
+            return clipped.to - clipped.from > 0.001 ? clipped : nil
+        }
+
+        var screenTrackID = kCMPersistentTrackID_Invalid
         var parameters: [AVMutableAudioMixInputParameters] = []
-        let sides: [(file: String, lead: Double, isMix: Bool)] = [
-            (recording.originalFile, recording.originalLead, false),
-            (recording.mixFile, recording.mixLead, true)
-        ]
         let startsOnMix = session.isMix(at: range.lowerBound)
         let switches = session.sortedSwitches
             .map { $0 - range.lowerBound }
             .filter { $0 > 0 && $0 < length }
 
-        for side in sides {
-            let asset = AVURLAsset(url: folder.appendingPathComponent(side.file))
-            guard let source = try await asset.loadTracks(withMediaType: .audio).first,
-                  let track = composition.addMutableTrack(
-                      withMediaType: .audio,
-                      preferredTrackID: kCMPersistentTrackID_Invalid
-                  ) else { continue }
-            let duration = CMTimeGetSeconds(try await asset.load(.duration))
-            try insert(
-                source, into: track,
-                sourceStart: range.lowerBound - side.lead, sourceDuration: duration,
-                lead: side.lead, range: range
-            )
+        if !segments.isEmpty {
+            guard let screenTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
+                  let originalTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid),
+                  let mixTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                throw BuildError.trackFailed
+            }
 
-            let parameter = AVMutableAudioMixInputParameters(track: track)
-            var audible = side.isMix == startsOnMix
-            parameter.setVolume(audible ? 1 : 0, at: .zero)
-            for point in switches {
-                let from: Float = audible ? 1 : 0
-                audible.toggle()
-                let start = max(point - switchRamp / 2, 0)
-                parameter.setVolumeRamp(
-                    fromStartVolume: from,
-                    toEndVolume: audible ? 1 : 0,
-                    timeRange: CMTimeRange(start: time(start), duration: time(switchRamp))
+            var sources: [UUID: (screen: AVAssetTrack?, original: AVAssetTrack?, mix: AVAssetTrack?)] = [:]
+            for segment in segments where sources[segment.take.id] == nil {
+                let take = segment.take
+                sources[take.id] = (
+                    try? await firstTrack(take.url(take.screenFile, in: folder), .video),
+                    try? await firstTrack(take.url(take.originalFile, in: folder), .audio),
+                    try? await firstTrack(take.url(take.mixFile, in: folder), .audio)
                 )
             }
-            parameters.append(parameter)
+
+            for segment in segments {
+                let take = segment.take
+                guard let source = sources[take.id] else { continue }
+                let at = segment.from - range.lowerBound
+                if let screen = source.screen {
+                    try place(screen, into: screenTrack,
+                              sourceFrom: segment.from - take.start, sourceTo: segment.to - take.start, at: at)
+                }
+                if let original = source.original {
+                    try place(original, into: originalTrack,
+                              sourceFrom: segment.from - take.start - take.originalLead,
+                              sourceTo: segment.to - take.start - take.originalLead, at: at)
+                }
+                if let mix = source.mix {
+                    try place(mix, into: mixTrack,
+                              sourceFrom: segment.from - take.start - take.mixLead,
+                              sourceTo: segment.to - take.start - take.mixLead, at: at)
+                }
+            }
+
+            if screenTrack.segments.isEmpty {
+                composition.removeTrack(screenTrack)
+            } else {
+                screenTrackID = screenTrack.trackID
+            }
+
+            for (track, isMix) in [(originalTrack, false), (mixTrack, true)] {
+                let parameter = AVMutableAudioMixInputParameters(track: track)
+                var audible = isMix == startsOnMix
+                parameter.setVolume(audible ? 1 : 0, at: .zero)
+                for point in switches {
+                    let from: Float = audible ? 1 : 0
+                    audible.toggle()
+                    parameter.setVolumeRamp(
+                        fromStartVolume: from,
+                        toEndVolume: audible ? 1 : 0,
+                        timeRange: CMTimeRange(start: time(max(point - switchRamp / 2, 0)), duration: time(switchRamp))
+                    )
+                }
+                parameters.append(parameter)
+            }
         }
 
         let audioMix = AVMutableAudioMix()
@@ -159,9 +172,14 @@ enum CompositionFactory {
             switches: switches,
             startsOnMix: startsOnMix,
             filmTrackID: filmTrackID,
-            screenTrackID: screenTrack.trackID
+            screenTrackID: screenTrackID
         )
 
+        // The instruction covers the whole range even where no track has
+        // media, so a gap renders as the empty layout instead of failing.
+        if composition.tracks(withMediaType: .video).isEmpty {
+            throw BuildError.noRecording
+        }
         let total = time(length)
         let videoComposition = AVMutableVideoComposition()
         videoComposition.customVideoCompositorClass = SessionCompositor.self
@@ -179,28 +197,34 @@ enum CompositionFactory {
         )
     }
 
-    /// Inserts the part of `source` that falls inside `range`.
-    ///
-    /// - `sourceStart`: source time at the start of the range.
-    /// - `lead`: recording time of the source's own zero, so source time s
-    ///   plays at recording time s + lead.
-    private static func insert(
+    private static func firstTrack(_ url: URL, _ type: AVMediaType) async throws -> AVAssetTrack? {
+        let asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+        return try await asset.loadTracks(withMediaType: type).first
+    }
+
+    /// Places source time `sourceFrom ..< sourceTo` at composition time `at`,
+    /// clipped to what the source has, padding any gap before it with an
+    /// empty edit.
+    private static func place(
         _ source: AVAssetTrack,
         into track: AVMutableCompositionTrack,
-        sourceStart: Double,
-        sourceDuration: Double,
-        lead: Double,
-        range: ClosedRange<Double>
+        sourceFrom: Double,
+        sourceTo: Double,
+        at: Double
     ) throws {
-        let length = range.upperBound - range.lowerBound
-        let from = max(sourceStart, 0)
-        let to = min(sourceStart + length, sourceDuration)
+        let available = CMTimeGetSeconds(source.timeRange.end)
+        let from = max(sourceFrom, 0)
+        let to = min(sourceTo, available)
         guard to - from > 0.001 else { return }
-        let at = from + lead - range.lowerBound
+        let target = at + (from - sourceFrom)
+        let end = CMTimeGetSeconds(track.timeRange.end)
+        if target > end + 0.0005 {
+            track.insertEmptyTimeRange(CMTimeRange(start: time(end), duration: time(target - end)))
+        }
         try track.insertTimeRange(
             CMTimeRange(start: time(from), duration: time(to - from)),
             of: source,
-            at: time(max(at, 0))
+            at: time(max(target, end))
         )
     }
 }

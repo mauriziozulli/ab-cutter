@@ -4,14 +4,6 @@ import Combine
 import Foundation
 import UniformTypeIdentifiers
 
-enum Phase: String, CaseIterable, Identifiable {
-    case record
-    case edit
-
-    var id: String { rawValue }
-    var title: String { self == .record ? "Aufnahme" : "Schnitt" }
-}
-
 /// Which marker the timeline has in hand.
 enum MarkerSelection: Equatable {
     case switchPoint(Int)
@@ -28,7 +20,13 @@ final class Store: ObservableObject {
         didSet { sessionChanged(from: oldValue) }
     }
     @Published private(set) var folder: URL?
-    @Published var phase: Phase = .record
+    /// The record inspector on the left: frame, inputs, meters.
+    @Published var showRecordPanel = true {
+        didSet {
+            guard oldValue != showRecordPanel, !isRecording else { return }
+            if showRecordPanel { armAudio() } else { disarmAudio() }
+        }
+    }
     @Published var status = "Rahmen über Pro Tools legen, Ton wählen, Record."
     @Published var errorMessage: String?
 
@@ -64,7 +62,8 @@ final class Store: ObservableObject {
     }
     @Published var zoom: Double = 1
     @Published var selection: MarkerSelection?
-    @Published private(set) var waveforms: (original: Waveform?, mix: Waveform?) = (nil, nil)
+    /// Envelopes of each take's two mixes, by take.
+    @Published private(set) var waveforms: [UUID: (original: Waveform?, mix: Waveform?)] = [:]
     @Published private(set) var isSyncing = false
     @Published private(set) var isExporting = false
     @Published private(set) var exportProgress: Double = 0
@@ -105,10 +104,7 @@ final class Store: ObservableObject {
         refreshDevices()
 
         if let path = UserDefaults.standard.string(forKey: Self.lastSessionKey) {
-            let url = URL(fileURLWithPath: path)
-            if (try? openSession(at: url)) != nil, session.recording != nil {
-                phase = .edit
-            }
+            try? openSession(at: URL(fileURLWithPath: path))
         }
     }
 
@@ -133,6 +129,7 @@ final class Store: ObservableObject {
         session = loaded
         UserDefaults.standard.set(url.path, forKey: Self.lastSessionKey)
         selection = nil
+        waveforms = [:]
         loadWaveforms()
         rebuildPreview(seekTo: loaded.inPoint)
     }
@@ -147,7 +144,6 @@ final class Store: ObservableObject {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try openSession(at: url)
-            phase = session.recording == nil ? .record : .edit
             status = "Session «\(url.lastPathComponent)» geöffnet."
         } catch {
             errorMessage = "In diesem Ordner liegt keine Session."
@@ -167,7 +163,8 @@ final class Store: ObservableObject {
             || old.labelOriginal != session.labelOriginal
             || old.labelMix != session.labelMix
             || old.filmPath != session.filmPath
-            || old.filmOffset != session.filmOffset
+            || old.filmDuration != session.filmDuration
+            || old.takes != session.takes
         if layoutChanged, dragDepth == 0 { rebuildPreview() }
     }
 
@@ -214,7 +211,7 @@ final class Store: ObservableObject {
     private func routesChanged() {
         Self.storeRoute(originalRoute, Self.originalRouteKey)
         Self.storeRoute(mixRoute, Self.mixRouteKey)
-        if phase == .record, !isRecording { armAudio() }
+        if showRecordPanel, !isRecording { armAudio() }
     }
 
     /// Opens the devices so the meters move before anything is recorded.
@@ -391,17 +388,33 @@ final class Store: ObservableObject {
         showFrame()
         guard let frameWindow else { return }
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH-mm-ss"
-        let target = Self.sessionsRoot.appendingPathComponent(formatter.string(from: Date()), isDirectory: true)
+        // The first take makes the session folder; every take gets its own
+        // subfolder in it.
+        let root: URL
+        if let folder {
+            root = folder
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH-mm-ss"
+            root = Self.sessionsRoot.appendingPathComponent(formatter.string(from: Date()), isDirectory: true)
+        }
+        var take = Take()
+        take.folder = String(format: "take-%02d", (session.takes.count) + 1)
+        // Placed at the playhead until the sound says better.
+        take.start = (session.hasTakes || session.filmURL != nil) ? currentTime : 0
+        let target = root.appendingPathComponent(take.folder, isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         } catch {
             errorMessage = "Der Session-Ordner konnte nicht angelegt werden. \(error.localizedDescription)"
             return
         }
+        if folder == nil {
+            folder = root
+            UserDefaults.standard.set(root.path, forKey: Self.lastSessionKey)
+        }
 
-        let recording = Recording()
+        let recording = take
         player.pause()
         frameWindow.isRecording = true
         isRecording = true
@@ -419,7 +432,7 @@ final class Store: ObservableObject {
                     rect: rect,
                     to: target.appendingPathComponent(recording.screenFile)
                 )
-                pendingFolder = target
+                pendingTake = recording
             } catch {
                 _ = audio.stopWriting()
                 finishRecordingUI()
@@ -428,50 +441,33 @@ final class Store: ObservableObject {
         }
     }
 
-    private var pendingFolder: URL?
+    private var pendingTake: Take?
 
     func stopRecording() {
-        guard isRecording, let target = pendingFolder else { return }
-        pendingFolder = nil
+        guard isRecording, let pending = pendingTake else { return }
+        pendingTake = nil
         status = "Aufnahme wird abgeschlossen …"
         Task {
+            var take = pending
             do {
                 let picture = try await screen.stop()
                 let starts = audio.stopWriting()
                 finishRecordingUI()
 
-                var recording = Recording()
-                recording.duration = picture.duration
-                recording.originalLead = (starts.original ?? picture.start) - picture.start
-                recording.mixLead = (starts.mix ?? picture.start) - picture.start
+                take.duration = picture.duration
+                take.originalLead = (starts.original ?? picture.start) - picture.start
+                take.mixLead = (starts.mix ?? picture.start) - picture.start
 
-                // A new take keeps what belongs to the film, not to the take:
-                // the film, its titles, the labels, the output choices.
-                var next = Session()
-                next.recording = recording
-                next.filmPath = session.filmPath
-                next.title = session.title
-                next.subtitle = session.subtitle
-                next.labelOriginal = session.labelOriginal
-                next.labelMix = session.labelMix
-                next.formats = session.formats
-                next.stillLayout = session.stillLayout
-                next.stillFilmOriginal = session.stillFilmOriginal
-                next.stillWeb = session.stillWeb
-                next.outPoint = recording.duration
-
-                folder = target
-                session = next
+                session.takes.append(take)
+                if session.takes.count == 1, session.outPoint <= session.inPoint {
+                    session.inPoint = take.start
+                }
                 save()
-                UserDefaults.standard.set(target.path, forKey: Self.lastSessionKey)
                 selection = nil
-                phase = .edit
-                disarmAudio()
-                hideFrame()
                 loadWaveforms()
-                rebuildPreview(seekTo: 0)
-                status = String(format: "%.1f s aufgenommen.", recording.duration)
-                if session.filmURL != nil { syncFilm() }
+                rebuildPreview(seekTo: take.start)
+                status = String(format: "Take %d: %.1f s aufgenommen.", session.takes.count, take.duration)
+                if session.filmURL != nil { syncTake(take.id) }
             } catch {
                 _ = audio.stopWriting()
                 finishRecordingUI()
@@ -486,19 +482,38 @@ final class Store: ObservableObject {
         frameWindow?.isRecording = false
     }
 
-    func enterRecordPhase() {
-        player.pause()
-        phase = .record
-        refreshDevices()
-        armAudio()
-        if hasScreenPermission { showFrame() }
+    func toggleRecordPanel() {
+        showRecordPanel.toggle()
+        if showRecordPanel {
+            refreshDevices()
+            if hasScreenPermission { showFrame() }
+        } else {
+            hideFrame()
+        }
     }
 
-    func enterEditPhase() {
-        guard session.recording != nil else { return }
-        disarmAudio()
-        hideFrame()
-        phase = .edit
+    /// A fresh session for the same film: film, titles, labels and output
+    /// choices stay, takes and markers go. The next Record makes its folder.
+    func newSession() {
+        guard !isRecording else { return }
+        var next = Session()
+        next.filmPath = session.filmPath
+        next.filmDuration = session.filmDuration
+        next.title = session.title
+        next.subtitle = session.subtitle
+        next.labelOriginal = session.labelOriginal
+        next.labelMix = session.labelMix
+        next.formats = session.formats
+        next.stillLayout = session.stillLayout
+        next.stillFilmOriginal = session.stillFilmOriginal
+        next.stillWeb = session.stillWeb
+        folder = nil
+        UserDefaults.standard.removeObject(forKey: Self.lastSessionKey)
+        session = next
+        selection = nil
+        waveforms = [:]
+        rebuildPreview(seekTo: 0)
+        status = "Neue Session — Record legt den Ordner an."
     }
 
     // MARK: - Film and sync
@@ -508,45 +523,69 @@ final class Store: ObservableObject {
         panel.allowedContentTypes = [.movie]
         panel.message = "Den fertigen Film wählen — er wird nur gelesen."
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        session.filmPath = url.path
-        session.syncConfidence = nil
-        if session.recording != nil { syncFilm() }
+        Task {
+            let asset = AVURLAsset(url: url)
+            let duration = (try? await asset.load(.duration)).map(CMTimeGetSeconds) ?? 0
+            session.filmPath = url.path
+            session.filmDuration = duration.isFinite ? duration : 0
+            syncAllTakes()
+        }
     }
 
-    /// Matches the recorded original against the film's own sound.
-    func syncFilm() {
-        guard let filmURL = session.filmURL, let folder, let recording = session.recording else { return }
-        let originalURL = folder.appendingPathComponent(recording.originalFile)
+    func syncAllTakes() {
+        for take in session.takes { syncTake(take.id) }
+    }
+
+    /// Places a take on the film by matching its recorded original against
+    /// the film's own sound.
+    func syncTake(_ id: UUID) {
+        guard let filmURL = session.filmURL, let folder,
+              let take = session.takes.first(where: { $0.id == id }) else { return }
+        let originalURL = take.url(take.originalFile, in: folder)
         isSyncing = true
-        status = "Synchronisiere den Film am Originalton …"
+        status = "Synchronisiere am Originalton …"
         Task {
             defer { isSyncing = false }
             do {
                 let result = try await AudioAligner.align(sourceURL: originalURL, videoURL: filmURL)
+                guard let index = session.takes.firstIndex(where: { $0.id == id }) else { return }
                 // The original's first sample lands at film time `offset`, and
-                // sits at recording time `originalLead`.
-                session.filmOffset = result.offsetSeconds - recording.originalLead
-                session.syncConfidence = result.confidence
-                status = String(format: "Film synchron (Übereinstimmung %.0f %%).", result.confidence * 100)
+                // sits `originalLead` after the take's first frame.
+                session.takes[index].start = result.offsetSeconds - take.originalLead
+                session.takes[index].syncConfidence = result.confidence
+                status = String(format: "Take synchron (Übereinstimmung %.0f %%).", result.confidence * 100)
             } catch {
-                session.syncConfidence = nil
                 errorMessage = error.localizedDescription
             }
         }
     }
 
-    /// One frame of the film, by hand.
-    func nudgeFilm(frames: Int) {
-        session.filmOffset += Double(frames) / 25
+    /// The take under the playhead — the one the nudge and sync buttons mean.
+    var currentTake: Take? {
+        session.segments().first { $0.from <= currentTime && $0.to >= currentTime }?.take
+            ?? session.takes.last
+    }
+
+    /// Moves the take under the playhead by whole frames.
+    func nudgeTake(frames: Int) {
+        guard let id = currentTake?.id,
+              let index = session.takes.firstIndex(where: { $0.id == id }) else { return }
+        session.takes[index].start += Double(frames) / 25
+    }
+
+    func deleteTake(_ id: UUID) {
+        session.takes.removeAll { $0.id == id }
+        waveforms[id] = nil
     }
 
     // MARK: - Preview
 
     func rebuildPreview(seekTo target: Double? = nil) {
-        guard let folder, session.recording != nil else {
+        guard session.hasTakes || session.filmURL != nil else {
             player.replaceCurrentItem(with: nil)
             return
         }
+        let folder = self.folder ?? FileManager.default.temporaryDirectory
         let resume = target ?? currentTime
         let wasPlaying = player.rate != 0
         let snapshot = session
@@ -600,15 +639,20 @@ final class Store: ObservableObject {
     }
 
     private func loadWaveforms() {
-        waveforms = (nil, nil)
-        guard let folder, let recording = session.recording else { return }
-        let original = folder.appendingPathComponent(recording.originalFile)
-        let mix = folder.appendingPathComponent(recording.mixFile)
-        Task {
-            async let a = WaveformExtractor.waveform(url: original)
-            async let b = WaveformExtractor.waveform(url: mix)
-            let result = await (a, b)
-            waveforms = (original: result.0, mix: result.1)
+        guard let folder else {
+            waveforms = [:]
+            return
+        }
+        for take in session.takes where waveforms[take.id] == nil {
+            let original = take.url(take.originalFile, in: folder)
+            let mix = take.url(take.mixFile, in: folder)
+            waveforms[take.id] = (nil, nil)
+            Task {
+                async let a = WaveformExtractor.waveform(url: original)
+                async let b = WaveformExtractor.waveform(url: mix)
+                let result = await (a, b)
+                waveforms[take.id] = (original: result.0, mix: result.1)
+            }
         }
     }
 
@@ -668,16 +712,24 @@ final class Store: ObservableObject {
     }
 
     func markIn() {
-        session.inPoint = snapped(min(currentTime, session.exportRange.upperBound - 0.5))
+        setIn(currentTime)
     }
 
     func markOut() {
-        session.outPoint = snapped(max(currentTime, session.inPoint + 0.5))
+        setOut(currentTime)
+    }
+
+    func setIn(_ seconds: Double) {
+        session.inPoint = snapped(min(seconds, session.exportRange.upperBound - 0.5))
+    }
+
+    func setOut(_ seconds: Double) {
+        session.outPoint = snapped(max(seconds, session.exportRange.lowerBound + 0.5))
     }
 
     func clearInOut() {
-        session.inPoint = 0
-        session.outPoint = session.duration
+        session.inPoint = session.takes.map(\.start).min() ?? 0
+        session.outPoint = 0
     }
 
     // MARK: - Export
@@ -689,7 +741,10 @@ final class Store: ObservableObject {
     }
 
     func export() {
-        guard let folder, session.recording != nil, !isExporting else { return }
+        guard let folder, session.hasTakes, !isExporting else {
+            if !session.hasTakes { errorMessage = "Es gibt noch keine Aufnahme zum Exportieren." }
+            return
+        }
         let formats = OutputFormat.allCases.filter { session.formats.contains($0) }
         guard !formats.isEmpty else {
             errorMessage = "Kein Format gewählt."
