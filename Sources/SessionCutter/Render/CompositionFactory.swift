@@ -104,14 +104,20 @@ enum CompositionFactory {
                 throw BuildError.trackFailed
             }
 
+            // An AVAssetTrack does not keep its asset alive; once the asset
+            // is gone, inserting the track fails with -11800 / -12780. The
+            // assets are held here until the composition is built.
+            var assets: [AVAsset] = []
             var sources: [UUID: (screen: AVAssetTrack?, original: AVAssetTrack?, mix: AVAssetTrack?)] = [:]
             for segment in segments where sources[segment.take.id] == nil {
                 let take = segment.take
-                sources[take.id] = (
-                    try? await firstTrack(take.url(take.screenFile, in: folder), .video),
-                    try? await firstTrack(take.url(take.originalFile, in: folder), .audio),
-                    try? await firstTrack(take.url(take.mixFile, in: folder), .audio)
-                )
+                var tracks: [AVAssetTrack?] = []
+                for (file, type) in [(take.screenFile, AVMediaType.video), (take.originalFile, .audio), (take.mixFile, .audio)] {
+                    let asset = AVURLAsset(url: take.url(file, in: folder), options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+                    assets.append(asset)
+                    tracks.append(try? await asset.loadTracks(withMediaType: type).first)
+                }
+                sources[take.id] = (tracks[0], tracks[1], tracks[2])
             }
 
             for segment in segments {
@@ -133,6 +139,8 @@ enum CompositionFactory {
                               sourceTo: segment.to - take.start - take.mixLead, at: at)
                 }
             }
+
+            withExtendedLifetime(assets) {}
 
             if screenTrack.segments.isEmpty {
                 composition.removeTrack(screenTrack)
@@ -214,11 +222,6 @@ enum CompositionFactory {
             audioMix: audioMix,
             origin: range.lowerBound
         )
-    }
-
-    private static func firstTrack(_ url: URL, _ type: AVMediaType) async throws -> AVAssetTrack? {
-        let asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
-        return try await asset.loadTracks(withMediaType: type).first
     }
 
     /// Places source time `sourceFrom ..< sourceTo` at composition time `at`,

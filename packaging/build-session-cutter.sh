@@ -48,9 +48,11 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BINPATH/$EXEC" "$APP/Contents/MacOS/$EXEC"
 
-# SwiftPM resource bundles must sit next to the executable.
+# SwiftPM resource bundles: a release build looks for them in
+# Bundle.main.resourceURL, i.e. Contents/Resources — next to the executable
+# it would crash at launch ("unable to find bundle named …").
 shopt -s nullglob
-for bundle in "$BINPATH"/*.bundle; do cp -R "$bundle" "$APP/Contents/MacOS/"; done
+for bundle in "$BINPATH"/*.bundle; do cp -R "$bundle" "$APP/Contents/Resources/"; done
 shopt -u nullglob
 
 # App icon: use a committed AppIcon.icns, otherwise build one from a PNG.

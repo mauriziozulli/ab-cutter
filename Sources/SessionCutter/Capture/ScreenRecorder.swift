@@ -42,6 +42,8 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     /// What the stream delivered, by frame status, and what was written.
     private var statusCounts: [Int: Int] = [:]
     private var appended = 0
+    private var notReady = 0
+    private static let maxLongSide: CGFloat = 2880
 
     static var hasPermission: Bool { CGPreflightScreenCaptureAccess() }
 
@@ -79,7 +81,13 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             width: rect.width,
             height: rect.height
         )
-        let scale = screen.backingScaleFactor
+        // The export shows Pro Tools in a 1080 px band, so the full backing
+        // resolution (4634 px on a 5K display) buys nothing — but it breaks
+        // the H.264 encoder's limits and starves Pro Tools of CPU, which
+        // stutters the very sound being recorded. Cap the long side.
+        let backing = screen.backingScaleFactor
+        let shrink = min(1, Self.maxLongSide / (max(local.width, local.height) * backing))
+        let scale = backing * shrink
         let width = Self.even(local.width * scale)
         let height = Self.even(local.height * scale)
 
@@ -89,7 +97,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         config.height = height
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.minimumFrameInterval = CMTime(value: 1, timescale: 30)
-        config.queueDepth = 6
+        config.queueDepth = 8
         config.showsCursor = true
         config.capturesAudio = false
 
@@ -102,7 +110,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         }
         // Text and meters: a generous rate keeps the Pro Tools edit window
         // readable after the platform's own re-encode.
-        let bitRate = Double(width * height) * 30 * 0.25
+        let bitRate = Double(width * height) * 30 * 0.12
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: width,
@@ -133,6 +141,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             self.failure = nil
             self.statusCounts = [:]
             self.appended = 0
+            self.notReady = 0
         }
         Diagnostics.log(String(
             format: "Bildaufnahme: Display %u, Ausschnitt %.0f,%.0f %.0f×%.0f pt → %ld×%ld px, %ld eigene App(s) ausgeschlossen",
@@ -161,7 +170,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             (writer, input, firstTime, failure)
         }
         let counts = queue.sync { (statusCounts, appended) }
-        Diagnostics.log("Bildaufnahme gestoppt: Frame-Status \(counts.0) (0 = vollständig), \(counts.1) Bilder geschrieben, Writer-Status \(state.0?.status.rawValue ?? -1)")
+        Diagnostics.log("Bildaufnahme gestoppt: Frame-Status \(counts.0) (0 = vollständig), \(counts.1) Bilder geschrieben, \(queue.sync { notReady }) verworfen (Encoder nicht bereit), Writer-Status \(state.0?.status.rawValue ?? -1)")
         if let error = state.3 { Diagnostics.log("Bildaufnahme Fehler: \(Diagnostics.describe(error))") }
         guard let writer = state.0, let input = state.1, let first = state.2 else {
             throw ScreenRecordError.nothingRecorded
@@ -206,7 +215,11 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             writer.startSession(atSourceTime: time)
             firstTime = time
         }
-        guard writer.status == .writing, input.isReadyForMoreMediaData else { return }
+        guard writer.status == .writing else { return }
+        guard input.isReadyForMoreMediaData else {
+            notReady += 1
+            return
+        }
         if adaptor.append(pixels, withPresentationTime: time) {
             appended += 1
         } else {

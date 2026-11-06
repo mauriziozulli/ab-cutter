@@ -2,6 +2,7 @@ import AVFoundation
 import AudioToolbox
 import CoreAudio
 import Foundation
+import os
 
 enum AudioRecordError: LocalizedError {
     case deviceMissing(String)
@@ -43,10 +44,10 @@ final class AudioRecorder: @unchecked Sendable {
 
     private var inputs: [HALInput] = []
     private let lock = NSLock()
-    private let writeQueue = DispatchQueue(label: "SessionCutter.audioWrite")
+    private let writeQueue = DispatchQueue(label: "SessionCutter.audioWrite", qos: .userInitiated)
+    private var drainTimer: DispatchSourceTimer?
     private var files: [Side: AVAudioFile] = [:]
-    private var firstHostTime: [Side: UInt64] = [:]
-    private var channelPeaks: [String: [Float]] = [:]
+    private var scratch: [Side: AVAudioPCMBuffer] = [:]
 
     var isArmed: Bool { !inputs.isEmpty }
 
@@ -63,12 +64,8 @@ final class AudioRecorder: @unchecked Sendable {
     /// The loudest sample per channel of every open device since the last
     /// call, keyed by device UID.
     func takeChannelPeaks() -> [String: [Float]] {
-        lock.lock()
-        defer { lock.unlock() }
-        let result = channelPeaks
-        for key in channelPeaks.keys {
-            channelPeaks[key] = Array(repeating: 0, count: channelPeaks[key]?.count ?? 0)
-        }
+        var result: [String: [Float]] = [:]
+        for input in inputs { result[input.uid] = input.takePeaks() }
         return result
     }
 
@@ -87,9 +84,7 @@ final class AudioRecorder: @unchecked Sendable {
                 disarm()
                 throw AudioRecordError.deviceMissing(uid)
             }
-            let input = HALInput(uid: uid, sides: sides) { [weak self] block in
-                self?.receive(block)
-            }
+            let input = HALInput(uid: uid, name: device.name, sides: sides)
             do {
                 try input.open(device: device)
             } catch {
@@ -98,27 +93,38 @@ final class AudioRecorder: @unchecked Sendable {
                 throw error
             }
             inputs.append(input)
-            lock.lock()
-            channelPeaks[uid] = Array(repeating: 0, count: input.channels)
-            lock.unlock()
+            Diagnostics.log(String(
+                format: "Toneingang «%@»: %ld Kanäle, %.0f Hz, Puffer %u Frames",
+                device.name, input.channels, input.sampleRate, input.bufferFrames
+            ))
         }
+
+        let timer = DispatchSource.makeTimerSource(queue: writeQueue)
+        timer.schedule(deadline: .now() + .milliseconds(20), repeating: .milliseconds(20))
+        timer.setEventHandler { [weak self] in self?.drain() }
+        timer.resume()
+        drainTimer = timer
     }
 
     func disarm() {
+        drainTimer?.cancel()
+        drainTimer = nil
+        writeQueue.sync {}
         for input in inputs { input.close() }
         inputs = []
         lock.lock()
         files = [:]
-        channelPeaks = [:]
+        scratch = [:]
         lock.unlock()
     }
 
     // MARK: - Files
 
-    /// Opens one stereo WAV per side at the device's own rate. The next block
-    /// of each device goes into them.
+    /// Opens one stereo WAV per side at the device's own rate. From the next
+    /// block of each device on, its sound goes into them.
     func startWriting(originalURL: URL, mixURL: URL) throws {
         var opened: [Side: AVAudioFile] = [:]
+        var buffers: [Side: AVAudioPCMBuffer] = [:]
         for input in inputs {
             for (side, _) in input.sides {
                 let url = side == .original ? originalURL : mixURL
@@ -132,74 +138,73 @@ final class AudioRecorder: @unchecked Sendable {
                     AVLinearPCMIsNonInterleaved: false
                 ]
                 do {
-                    opened[side] = try AVAudioFile(
+                    let file = try AVAudioFile(
                         forWriting: url,
                         settings: settings,
                         commonFormat: .pcmFormatFloat32,
                         interleaved: false
                     )
+                    opened[side] = file
+                    buffers[side] = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: HALInput.drainChunk)
                 } catch {
                     throw AudioRecordError.fileFailed(error.localizedDescription)
                 }
             }
         }
-        lock.lock()
-        firstHostTime = [:]
-        files = opened
-        lock.unlock()
+        writeQueue.sync {
+            self.lock.lock()
+            self.files = opened
+            self.scratch = buffers
+            self.lock.unlock()
+        }
+        for input in inputs { input.beginWriting() }
     }
 
     /// Closes the files once every queued block is written, and reports where
     /// each one started, in host seconds.
     func stopWriting() -> (original: Double?, mix: Double?) {
-        lock.lock()
-        files = [:]
-        let starts = firstHostTime
-        lock.unlock()
-        writeQueue.sync {}
+        var starts: [Side: UInt64] = [:]
+        for input in inputs {
+            let first = input.endWriting()
+            if let first { for (side, _) in input.sides { starts[side] = first } }
+        }
+        // Everything the devices delivered is flushed before the files close.
+        writeQueue.sync {
+            self.drain()
+            self.lock.lock()
+            self.files = [:]
+            self.scratch = [:]
+            self.lock.unlock()
+        }
         return (
             starts[.original].map { AVAudioTime.seconds(forHostTime: $0) },
             starts[.mix].map { AVAudioTime.seconds(forHostTime: $0) }
         )
     }
 
-    // MARK: - Blocks
-
-    fileprivate struct Block {
-        var uid: String
-        var hostTime: UInt64
-        var peaks: [Float]
-        var pairs: [(side: Side, left: [Float], right: [Float])]
-    }
-
-    private func receive(_ block: Block) {
+    /// Runs on the write queue only: moves what the I/O threads collected
+    /// into the files.
+    private func drain() {
         lock.lock()
-        if var current = channelPeaks[block.uid], current.count == block.peaks.count {
-            for index in current.indices { current[index] = max(current[index], block.peaks[index]) }
-            channelPeaks[block.uid] = current
-        } else {
-            channelPeaks[block.uid] = block.peaks
-        }
-        var targets: [(AVAudioFile, [Float], [Float])] = []
-        for pair in block.pairs {
-            guard let file = files[pair.side] else { continue }
-            if firstHostTime[pair.side] == nil { firstHostTime[pair.side] = block.hostTime }
-            targets.append((file, pair.left, pair.right))
-        }
+        let files = self.files
+        let scratch = self.scratch
         lock.unlock()
+        guard !files.isEmpty else { return }
 
-        guard !targets.isEmpty else { return }
-        writeQueue.async {
-            for (file, left, right) in targets {
-                let frames = left.count
-                guard let buffer = AVAudioPCMBuffer(
-                    pcmFormat: file.processingFormat,
-                    frameCapacity: AVAudioFrameCount(frames)
-                ), let data = buffer.floatChannelData else { continue }
-                buffer.frameLength = AVAudioFrameCount(frames)
-                left.withUnsafeBufferPointer { data[0].update(from: $0.baseAddress!, count: frames) }
-                right.withUnsafeBufferPointer { data[1].update(from: $0.baseAddress!, count: frames) }
-                try? file.write(from: buffer)
+        for input in inputs {
+            while true {
+                let frames = input.pull()
+                if frames == 0 { break }
+                for (side, slot) in input.sides.enumerated().map({ ($0.element.0, $0.offset) }) {
+                    guard let file = files[side], let buffer = scratch[side],
+                          let data = buffer.floatChannelData else { continue }
+                    buffer.frameLength = AVAudioFrameCount(frames)
+                    data[0].update(from: input.pulled[slot * 2], count: frames)
+                    data[1].update(from: input.pulled[slot * 2 + 1], count: frames)
+                    do { try file.write(from: buffer) } catch {
+                        Diagnostics.log("Tonaufnahme schreibt nicht: \(Diagnostics.describe(error))")
+                    }
+                }
             }
         }
     }
@@ -208,22 +213,57 @@ final class AudioRecorder: @unchecked Sendable {
 // MARK: - One device
 
 /// A HAL output unit with only its input side switched on.
+///
+/// The I/O thread does nothing but render, copy the wanted channels into a
+/// preallocated ring and note the peaks: no allocation, no file access, no
+/// waiting on anything but a lock held for a few microseconds. The write
+/// queue drains the ring.
 private final class HALInput {
+    static let drainChunk: AVAudioFrameCount = 16_384
+    private static let ringFrames = 1 << 19          // ~11 s at 48 kHz
+
     let uid: String
+    let name: String
     let sides: [(AudioRecorder.Side, Int)]
     private(set) var channels = 0
     private(set) var sampleRate: Double = 48_000
+    private(set) var bufferFrames: UInt32 = 0
 
     private var unit: AudioUnit?
     private var buffers: UnsafeMutableAudioBufferListPointer?
-    private let capacity = 8192
-    private let deliver: (AudioRecorder.Block) -> Void
+    private let capacity = 16_384
 
-    init(uid: String, sides: [(AudioRecorder.Side, Int)], deliver: @escaping (AudioRecorder.Block) -> Void) {
+    /// Hardware channel behind each ring channel: left, right of every side.
+    private var tracked: [Int] = []
+    private var ring: [UnsafeMutablePointer<Float>] = []
+    /// What `pull` hands to the write queue; one pointer per ring channel.
+    private(set) var pulled: [UnsafeMutablePointer<Float>] = []
+    private var writeIndex = 0
+    private var readIndex = 0
+
+    private var lock = os_unfair_lock()
+    private var peaks: [Float] = []
+    private var writing = false
+    private var firstHost: UInt64?
+
+    // Diagnostics, written on the I/O thread, read at the end of a take.
+    private var callbacks = 0
+    private var maxFrames = 0
+    private var skipped = 0
+    private var renderErrors = 0
+    private var overruns = 0
+    private var jumps = 0
+    private var expectedSample: Float64 = -1
+    private var lastHostNs: UInt64 = 0
+    private var maxGapMs: Double = 0
+
+    init(uid: String, name: String, sides: [(AudioRecorder.Side, Int)]) {
         self.uid = uid
+        self.name = name
         self.sides = sides
-        self.deliver = deliver
     }
+
+    deinit { close() }
 
     func open(device: AudioInputDevice) throws {
         var description = AudioComponentDescription(
@@ -259,6 +299,17 @@ private final class HALInput {
         channels = max(Int(hardware.mChannelsPerFrame), 1)
         sampleRate = hardware.mSampleRate > 0 ? hardware.mSampleRate : 48_000
 
+        var frameSize = UInt32(MemoryLayout<UInt32>.size)
+        var bufferSize: UInt32 = 0
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyBufferFrameSize,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        if AudioObjectGetPropertyData(device.id, &address, 0, nil, &frameSize, &bufferSize) == noErr {
+            bufferFrames = bufferSize
+        }
+
         var client = AudioStreamBasicDescription(
             mSampleRate: sampleRate,
             mFormatID: kAudioFormatLinearPCM,
@@ -281,6 +332,20 @@ private final class HALInput {
             )
         }
         buffers = list
+
+        for (_, first) in sides {
+            tracked.append(min(first, channels - 1))
+            tracked.append(min(first + 1, channels - 1))
+        }
+        for _ in tracked {
+            let channel = UnsafeMutablePointer<Float>.allocate(capacity: Self.ringFrames)
+            channel.initialize(repeating: 0, count: Self.ringFrames)
+            ring.append(channel)
+            let out = UnsafeMutablePointer<Float>.allocate(capacity: Int(Self.drainChunk))
+            out.initialize(repeating: 0, count: Int(Self.drainChunk))
+            pulled.append(out)
+        }
+        peaks = Array(repeating: 0, count: channels)
 
         var callback = AURenderCallbackStruct(
             inputProc: halInputCallback,
@@ -307,49 +372,122 @@ private final class HALInput {
             free(buffers.unsafeMutablePointer)
         }
         buffers = nil
+        for pointer in ring { pointer.deallocate() }
+        for pointer in pulled { pointer.deallocate() }
+        ring = []
+        pulled = []
     }
 
     private func check(_ status: OSStatus, _ device: AudioInputDevice) throws {
         guard status == noErr else { throw AudioRecordError.deviceRefused(device.name, status) }
     }
 
-    /// Called on the device's I/O thread with fresh input.
+    // MARK: Control (not the I/O thread)
+
+    func takePeaks() -> [Float] {
+        os_unfair_lock_lock(&lock)
+        defer { os_unfair_lock_unlock(&lock) }
+        let result = peaks
+        for index in peaks.indices { peaks[index] = 0 }
+        return result
+    }
+
+    func beginWriting() {
+        os_unfair_lock_lock(&lock)
+        readIndex = writeIndex
+        firstHost = nil
+        callbacks = 0; maxFrames = 0; skipped = 0; renderErrors = 0
+        overruns = 0; jumps = 0; maxGapMs = 0
+        writing = true
+        os_unfair_lock_unlock(&lock)
+    }
+
+    /// Stops collecting; returns the host time of the first collected sample.
+    func endWriting() -> UInt64? {
+        os_unfair_lock_lock(&lock)
+        writing = false
+        let first = firstHost
+        let stats = (callbacks, maxFrames, skipped, renderErrors, overruns, jumps, maxGapMs)
+        os_unfair_lock_unlock(&lock)
+        Diagnostics.log(String(
+            format: "Toneingang «%@»: %ld Blöcke, größter %ld Frames, längste Lücke %.0f ms, Zeit-Sprünge %ld, Render-Fehler %ld, übersprungen %ld, Ring-Überläufe %ld",
+            name, stats.0, stats.1, stats.6, stats.5, stats.3, stats.2, stats.4
+        ))
+        return first
+    }
+
+    /// Write queue: copies up to a chunk out of the ring. Returns the frames.
+    func pull() -> Int {
+        os_unfair_lock_lock(&lock)
+        let available = writeIndex - readIndex
+        let count = min(available, Int(Self.drainChunk))
+        for slot in ring.indices {
+            for frame in 0..<count {
+                pulled[slot][frame] = ring[slot][(readIndex + frame) & (Self.ringFrames - 1)]
+            }
+        }
+        readIndex += count
+        os_unfair_lock_unlock(&lock)
+        return count
+    }
+
+    // MARK: I/O thread
+
     fileprivate func render(
         flags: UnsafeMutablePointer<AudioUnitRenderActionFlags>,
         timeStamp: UnsafePointer<AudioTimeStamp>,
         bus: UInt32,
         frames: UInt32
     ) -> OSStatus {
-        guard let unit, let buffers, Int(frames) <= capacity else { return noErr }
-        for index in 0..<buffers.count {
-            buffers[index].mDataByteSize = frames * 4
-        }
-        let status = AudioUnitRender(unit, flags, timeStamp, bus, frames, buffers.unsafeMutablePointer)
-        guard status == noErr else { return status }
-
+        guard let unit, let buffers else { return noErr }
         let count = Int(frames)
-        var channelData: [UnsafeMutablePointer<Float>] = []
-        var peaks: [Float] = []
-        for index in 0..<buffers.count {
-            guard let raw = buffers[index].mData else { return noErr }
-            let samples = raw.assumingMemoryBound(to: Float.self)
-            channelData.append(samples)
-            var peak: Float = 0
-            for frame in 0..<count { peak = max(peak, abs(samples[frame])) }
-            peaks.append(peak)
+        guard count <= capacity else {
+            os_unfair_lock_lock(&lock); skipped += 1; os_unfair_lock_unlock(&lock)
+            return noErr
+        }
+        for index in 0..<buffers.count { buffers[index].mDataByteSize = frames * 4 }
+        let status = AudioUnitRender(unit, flags, timeStamp, bus, frames, buffers.unsafeMutablePointer)
+        guard status == noErr else {
+            os_unfair_lock_lock(&lock); renderErrors += 1; os_unfair_lock_unlock(&lock)
+            return status
         }
 
-        let pairs = sides.map { entry -> (side: AudioRecorder.Side, left: [Float], right: [Float]) in
-            let (side, first) = entry
-            let left = min(first, channelData.count - 1)
-            let right = min(first + 1, channelData.count - 1)
-            return (
-                side,
-                Array(UnsafeBufferPointer(start: channelData[left], count: count)),
-                Array(UnsafeBufferPointer(start: channelData[right], count: count))
-            )
+        os_unfair_lock_lock(&lock)
+        callbacks += 1
+        maxFrames = max(maxFrames, count)
+        for index in 0..<min(buffers.count, peaks.count) {
+            guard let raw = buffers[index].mData else { continue }
+            let samples = raw.assumingMemoryBound(to: Float.self)
+            var peak = peaks[index]
+            for frame in 0..<count { peak = max(peak, abs(samples[frame])) }
+            peaks[index] = peak
         }
-        deliver(AudioRecorder.Block(uid: uid, hostTime: timeStamp.pointee.mHostTime, peaks: peaks, pairs: pairs))
+
+        let now = timeStamp.pointee.mHostTime
+        if writing {
+            if expectedSample >= 0, abs(timeStamp.pointee.mSampleTime - expectedSample) > 0.5 { jumps += 1 }
+            if lastHostNs != 0 {
+                let gap = AVAudioTime.seconds(forHostTime: now - lastHostNs) * 1000
+                maxGapMs = max(maxGapMs, gap)
+            }
+            if firstHost == nil { firstHost = now }
+            if writeIndex - readIndex + count > Self.ringFrames {
+                overruns += 1
+            } else {
+                for (slot, hardware) in tracked.enumerated() {
+                    guard hardware < buffers.count, let raw = buffers[hardware].mData else { continue }
+                    let samples = raw.assumingMemoryBound(to: Float.self)
+                    let target = ring[slot]
+                    for frame in 0..<count {
+                        target[(writeIndex + frame) & (Self.ringFrames - 1)] = samples[frame]
+                    }
+                }
+                writeIndex += count
+            }
+        }
+        expectedSample = timeStamp.pointee.mSampleTime + Float64(count)
+        lastHostNs = now
+        os_unfair_lock_unlock(&lock)
         return noErr
     }
 }
