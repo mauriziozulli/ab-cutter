@@ -172,6 +172,8 @@ final class Store: ObservableObject {
             || old.labelOriginal != session.labelOriginal
             || old.labelMix != session.labelMix
             || old.arrangement != session.arrangement
+            || old.originalGain != session.originalGain
+            || old.mixGain != session.mixGain
             || old.filmPath != session.filmPath
             || old.filmDuration != session.filmDuration
             || old.takes != session.takes

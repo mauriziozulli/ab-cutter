@@ -69,6 +69,7 @@ struct EditView: View {
                 filmPanel
                 textPanel
                 arrangementPanel
+                levelPanel
                 exportPanel
             }
             .padding(14)
@@ -212,6 +213,57 @@ struct EditView: View {
             Hint("Versatz in Pixeln des 1080 px breiten Posts, Y nach oben. Gilt für 4:5 und 9:16. Der Abstand zwischen Film und Pro Tools geht vom Filmband ab.")
         }
         .font(style.ui(AppType.small + 1))
+    }
+
+    private var levelPanel: some View {
+        Panel("Pegel") {
+            gainRow(store.session.labelOriginal.isEmpty ? "Original" : store.session.labelOriginal,
+                    value: $store.session.originalGain)
+            gainRow(store.session.labelMix.isEmpty ? "Final Mix" : store.session.labelMix,
+                    value: $store.session.mixGain)
+            HStack {
+                Spacer()
+                Button("Zurücksetzen") {
+                    store.session.originalGain = 0
+                    store.session.mixGain = 0
+                }
+                .buttonStyle(StudioButtonStyle(kind: .quiet))
+                .controlSize(.small)
+                .disabled(store.session.originalGain == 0 && store.session.mixGain == 0)
+            }
+            Hint("Lauter oder leiser im Post, in dB. Gilt für Vorschau und Export; die Aufnahmen selbst bleiben unverändert. Über 0 dB kann es übersteuern.")
+        }
+        .font(style.ui(AppType.small + 1))
+    }
+
+    /// A slider in half-decibel steps, with the value and ±0.5 dB buttons.
+    private func gainRow(_ title: String, value: Binding<Double>) -> some View {
+        let range = Session.gainRange
+        return HStack(spacing: 6) {
+            Text(title)
+                .foregroundStyle(style.muted)
+                .lineLimit(1)
+                .frame(width: 64, alignment: .leading)
+            Slider(
+                value: Binding(get: { value.wrappedValue }, set: { value.wrappedValue = ($0 * 2).rounded() / 2 }),
+                in: range
+            ) { editing in
+                if editing { store.beginDrag() } else { store.endDrag() }
+            }
+            .controlSize(.mini)
+            Button { value.wrappedValue = max(value.wrappedValue - 0.5, range.lowerBound) } label: {
+                Image(systemName: "minus")
+            }
+            Text(String(format: "%+.1f dB", value.wrappedValue))
+                .font(style.mono(AppType.small))
+                .foregroundStyle(style.faint)
+                .frame(width: 58, alignment: .trailing)
+            Button { value.wrappedValue = min(value.wrappedValue + 0.5, range.upperBound) } label: {
+                Image(systemName: "plus")
+            }
+        }
+        .buttonStyle(StudioButtonStyle(kind: .quiet))
+        .controlSize(.mini)
     }
 
     /// A slider for whole pixels, with the value and single-pixel steps.

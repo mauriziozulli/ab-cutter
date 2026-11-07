@@ -160,14 +160,16 @@ enum CompositionFactory {
 
             for (track, isMix) in audioTracks {
                 let parameter = AVMutableAudioMixInputParameters(track: track)
+                // Volumes above 1 do amplify in AVAudioMix.
+                let level = Float(pow(10, (isMix ? session.mixGain : session.originalGain) / 20))
                 var audible = isMix == startsOnMix
-                parameter.setVolume(audible ? 1 : 0, at: .zero)
+                parameter.setVolume(audible ? level : 0, at: .zero)
                 for point in switches {
-                    let from: Float = audible ? 1 : 0
+                    let from: Float = audible ? level : 0
                     audible.toggle()
                     parameter.setVolumeRamp(
                         fromStartVolume: from,
-                        toEndVolume: audible ? 1 : 0,
+                        toEndVolume: audible ? level : 0,
                         timeRange: CMTimeRange(start: time(max(point - switchRamp / 2, 0)), duration: time(switchRamp))
                     )
                 }

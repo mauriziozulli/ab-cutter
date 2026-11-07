@@ -197,6 +197,12 @@ struct Session: Codable {
     var labelMix: String = "Final Mix"
     var arrangement = PostArrangement()
 
+    /// Level of each side in the post, in dB, applied on top of the
+    /// recording. The WAVs themselves are never touched.
+    var originalGain: Double = 0
+    var mixGain: Double = 0
+    static let gainRange: ClosedRange<Double> = -24...12
+
     /// The stretch that is exported, on the timeline.
     var inPoint: Double = 0
     var outPoint: Double = 0
@@ -236,6 +242,8 @@ struct Session: Codable {
         if let v = try? box.decode(String.self, forKey: .labelOriginal) { labelOriginal = v }
         if let v = try? box.decode(String.self, forKey: .labelMix) { labelMix = v }
         if let v = try? box.decode(PostArrangement.self, forKey: .arrangement) { arrangement = v }
+        if let v = try? box.decode(Double.self, forKey: .originalGain) { originalGain = v }
+        if let v = try? box.decode(Double.self, forKey: .mixGain) { mixGain = v }
         if let v = try? box.decode(Double.self, forKey: .inPoint) { inPoint = v }
         if let v = try? box.decode(Double.self, forKey: .outPoint) { outPoint = v }
         if let v = try? box.decode([Double].self, forKey: .switches) { switches = v }
