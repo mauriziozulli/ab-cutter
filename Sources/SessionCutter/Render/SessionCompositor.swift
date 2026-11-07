@@ -89,7 +89,7 @@ final class SessionCompositor: NSObject, AVVideoCompositing, @unchecked Sendable
         let canvas = CGRect(origin: .zero, size: plan.renderSize)
         let seconds = CMTimeGetSeconds(request.compositionTime)
 
-        var image = CIImage(color: CIColor(red: 0.063, green: 0.063, blue: 0.078)).cropped(to: canvas)
+        var image = CIImage(color: .black).cropped(to: canvas)
 
         let film = request.sourceFrame(byTrackID: plan.filmTrackID).map { CIImage(cvPixelBuffer: $0) }
         if plan.softBackdrop, let film {
@@ -100,7 +100,7 @@ final class SessionCompositor: NSObject, AVVideoCompositing, @unchecked Sendable
                 width: canvas.width, height: plan.filmRect.minY - plan.screenRect.maxY
             )
             if gap.height > 0 {
-                image = CIImage(color: CIColor(red: 0.063, green: 0.063, blue: 0.078))
+                image = CIImage(color: .black)
                     .cropped(to: gap).composited(over: image)
             }
         }
