@@ -145,6 +145,36 @@ struct TitleStyle: Codable, Equatable {
     }
 }
 
+/// Where the type sits and how the two bands meet, in pixels of the 1080 px
+/// wide post. The same values serve both formats: their bands are the same
+/// size, only placed differently on the canvas.
+struct PostArrangement: Codable, Equatable {
+    /// Shift of the title block from where the layout puts it; y up.
+    var titleX: Double = 0
+    var titleY: Double = 0
+    /// Shift of the side's label over Pro Tools; y up.
+    var labelX: Double = 0
+    var labelY: Double = 0
+    /// Dark gap between film and Pro Tools. Taken from the film band, so
+    /// the Pro Tools band keeps its 1080 × 720 and the capture frame fits.
+    var bandGap: Double = 12
+
+    static let shiftRange: ClosedRange<Double> = -400...400
+    static let gapRange: ClosedRange<Double> = 0...60
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        self = PostArrangement()
+        let box = try decoder.container(keyedBy: CodingKeys.self)
+        if let v = try? box.decode(Double.self, forKey: .titleX) { titleX = v }
+        if let v = try? box.decode(Double.self, forKey: .titleY) { titleY = v }
+        if let v = try? box.decode(Double.self, forKey: .labelX) { labelX = v }
+        if let v = try? box.decode(Double.self, forKey: .labelY) { labelY = v }
+        if let v = try? box.decode(Double.self, forKey: .bandGap) { bandGap = v }
+    }
+}
+
 /// A point the stills are rendered from.
 struct StillMarker: Codable, Hashable, Identifiable {
     var id = UUID()
@@ -165,6 +195,7 @@ struct Session: Codable {
     var titleStyle = TitleStyle()
     var labelOriginal: String = "Original"
     var labelMix: String = "Final Mix"
+    var arrangement = PostArrangement()
 
     /// The stretch that is exported, on the timeline.
     var inPoint: Double = 0
@@ -204,6 +235,7 @@ struct Session: Codable {
         if let v = try? box.decode(TitleStyle.self, forKey: .titleStyle) { titleStyle = v }
         if let v = try? box.decode(String.self, forKey: .labelOriginal) { labelOriginal = v }
         if let v = try? box.decode(String.self, forKey: .labelMix) { labelMix = v }
+        if let v = try? box.decode(PostArrangement.self, forKey: .arrangement) { arrangement = v }
         if let v = try? box.decode(Double.self, forKey: .inPoint) { inPoint = v }
         if let v = try? box.decode(Double.self, forKey: .outPoint) { outPoint = v }
         if let v = try? box.decode([Double].self, forKey: .switches) { switches = v }

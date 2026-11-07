@@ -68,6 +68,7 @@ struct EditView: View {
             VStack(alignment: .leading, spacing: 16) {
                 filmPanel
                 textPanel
+                arrangementPanel
                 exportPanel
             }
             .padding(14)
@@ -182,6 +183,63 @@ struct EditView: View {
             }
             Hint("Das Label über Pro Tools wechselt mit dem Ton. Untertitel in Space Mono, Titel in den Hausschriften oder als Original-Titeldesign (PNG mit transparentem Grund).")
         }
+    }
+
+    private var arrangementPanel: some View {
+        Panel("Anordnung") {
+            Text("Titel")
+                .font(style.ui(AppType.small + 1, weight: .medium))
+                .foregroundStyle(style.text)
+            shiftRow("X", value: $store.session.arrangement.titleX, range: PostArrangement.shiftRange)
+            shiftRow("Y", value: $store.session.arrangement.titleY, range: PostArrangement.shiftRange)
+
+            Text("Label über Pro Tools")
+                .font(style.ui(AppType.small + 1, weight: .medium))
+                .foregroundStyle(style.text)
+            shiftRow("X", value: $store.session.arrangement.labelX, range: PostArrangement.shiftRange)
+            shiftRow("Y", value: $store.session.arrangement.labelY, range: PostArrangement.shiftRange)
+
+            StudioHairline(soft: true)
+            shiftRow("Abstand", value: $store.session.arrangement.bandGap, range: PostArrangement.gapRange)
+
+            HStack {
+                Spacer()
+                Button("Zurücksetzen") { store.session.arrangement = PostArrangement() }
+                    .buttonStyle(StudioButtonStyle(kind: .quiet))
+                    .controlSize(.small)
+                    .disabled(store.session.arrangement == PostArrangement())
+            }
+            Hint("Versatz in Pixeln des 1080 px breiten Posts, Y nach oben. Gilt für 4:5 und 9:16. Der Abstand zwischen Film und Pro Tools geht vom Filmband ab.")
+        }
+        .font(style.ui(AppType.small + 1))
+    }
+
+    /// A slider for whole pixels, with the value and single-pixel steps.
+    private func shiftRow(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .foregroundStyle(style.muted)
+                .frame(width: 52, alignment: .leading)
+            Slider(
+                value: Binding(get: { value.wrappedValue }, set: { value.wrappedValue = $0.rounded() }),
+                in: range
+            ) { editing in
+                if editing { store.beginDrag() } else { store.endDrag() }
+            }
+            .controlSize(.mini)
+            Button { value.wrappedValue = max(value.wrappedValue - 1, range.lowerBound) } label: {
+                Image(systemName: "minus")
+            }
+            Text("\(Int(value.wrappedValue))")
+                .font(style.mono(AppType.small))
+                .foregroundStyle(style.faint)
+                .frame(width: 34, alignment: .trailing)
+            Button { value.wrappedValue = min(value.wrappedValue + 1, range.upperBound) } label: {
+                Image(systemName: "plus")
+            }
+        }
+        .buttonStyle(StudioButtonStyle(kind: .quiet))
+        .controlSize(.mini)
     }
 
     private func field(_ prompt: String, text: Binding<String>) -> some View {

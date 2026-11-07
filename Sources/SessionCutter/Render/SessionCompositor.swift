@@ -27,12 +27,18 @@ struct LayoutPlan: @unchecked Sendable {
         return (flips % 2 == 1) != startsOnMix
     }
 
-    static func rects(for format: OutputFormat) -> (film: CGRect, screen: CGRect) {
+    /// The two bands. A gap between them comes off the film band, which
+    /// fills its rect by cropping anyway; Pro Tools keeps its full height.
+    static func rects(for format: OutputFormat, gap: Double = 0) -> (film: CGRect, screen: CGRect) {
         let size = format.size
         let block = PostLayout.filmBandHeight + PostLayout.screenBandHeight
         let bottom = ((size.height - block) / 2).rounded()
+        let spacing = CGFloat(min(max(gap, 0), PostLayout.filmBandHeight / 2)).rounded()
         let screen = CGRect(x: 0, y: bottom, width: size.width, height: PostLayout.screenBandHeight)
-        let film = CGRect(x: 0, y: screen.maxY, width: size.width, height: PostLayout.filmBandHeight)
+        let film = CGRect(
+            x: 0, y: screen.maxY + spacing,
+            width: size.width, height: PostLayout.filmBandHeight - spacing
+        )
         return (film, screen)
     }
 }
@@ -88,6 +94,15 @@ final class SessionCompositor: NSObject, AVVideoCompositing, @unchecked Sendable
         let film = request.sourceFrame(byTrackID: plan.filmTrackID).map { CIImage(cvPixelBuffer: $0) }
         if plan.softBackdrop, let film {
             image = Self.backdrop(film, canvas: canvas)
+            // The gap reads as a clean cut, not as backdrop showing through.
+            let gap = CGRect(
+                x: 0, y: plan.screenRect.maxY,
+                width: canvas.width, height: plan.filmRect.minY - plan.screenRect.maxY
+            )
+            if gap.height > 0 {
+                image = CIImage(color: CIColor(red: 0.063, green: 0.063, blue: 0.078))
+                    .cropped(to: gap).composited(over: image)
+            }
         }
         if let film {
             image = Self.place(film, in: plan.filmRect).composited(over: image)

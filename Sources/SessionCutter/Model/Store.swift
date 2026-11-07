@@ -171,6 +171,7 @@ final class Store: ObservableObject {
             || old.titleStyle != session.titleStyle
             || old.labelOriginal != session.labelOriginal
             || old.labelMix != session.labelMix
+            || old.arrangement != session.arrangement
             || old.filmPath != session.filmPath
             || old.filmDuration != session.filmDuration
             || old.takes != session.takes
@@ -570,6 +571,7 @@ final class Store: ObservableObject {
         next.titleStyle = session.titleStyle
         next.labelOriginal = session.labelOriginal
         next.labelMix = session.labelMix
+        next.arrangement = session.arrangement
         next.formats = session.formats
         next.stillLayout = session.stillLayout
         next.stillFilmOriginal = session.stillFilmOriginal

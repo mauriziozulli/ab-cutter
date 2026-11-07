@@ -178,7 +178,7 @@ enum CompositionFactory {
         let audioMix = AVMutableAudioMix()
         audioMix.inputParameters = parameters
 
-        let rects = LayoutPlan.rects(for: format)
+        let rects = LayoutPlan.rects(for: format, gap: session.arrangement.bandGap)
         let plan = LayoutPlan(
             renderSize: format.size,
             filmRect: rects.film,

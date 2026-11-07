@@ -13,11 +13,15 @@ enum OverlayFactory {
     }
 
     static func overlays(for format: OutputFormat, session: Session) -> Overlays {
-        let rects = LayoutPlan.rects(for: format)
+        let arrangement = session.arrangement
+        let rects = LayoutPlan.rects(for: format, gap: arrangement.bandGap)
+        let titleShift = CGVector(dx: arrangement.titleX, dy: arrangement.titleY)
+        let labelShift = CGVector(dx: arrangement.labelX, dy: arrangement.labelY)
         return Overlays(
-            title: title(session.title, subtitle: session.subtitle, style: session.titleStyle, canvas: format.size, band: rects.film),
-            labelOriginal: label(session.labelOriginal, canvas: format.size, band: rects.screen),
-            labelMix: label(session.labelMix, canvas: format.size, band: rects.screen)
+            title: title(session.title, subtitle: session.subtitle, style: session.titleStyle,
+                         canvas: format.size, band: rects.film, shift: titleShift),
+            labelOriginal: label(session.labelOriginal, canvas: format.size, band: rects.screen, shift: labelShift),
+            labelMix: label(session.labelMix, canvas: format.size, band: rects.screen, shift: labelShift)
         )
     }
 
@@ -31,7 +35,8 @@ enum OverlayFactory {
         subtitle: String,
         style: TitleStyle,
         canvas: CGSize,
-        band: CGRect
+        band: CGRect,
+        shift: CGVector = .zero
     ) -> CGImage? {
         let sub = subtitle.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         let picture: NSImage? = style.mode == .image ? style.imagePath.flatMap { NSImage(contentsOfFile: $0) } : nil
@@ -46,6 +51,8 @@ enum OverlayFactory {
             if style.position == .bottom {
                 shade(context, band: band)
             }
+            // The shade stays with the band; the type moves by the shift.
+            context.translateBy(x: shift.dx, y: shift.dy)
 
             // Measured off the reference post: the title spans about seven
             // tenths of the frame, the subtitle about half, tight under it,
@@ -138,11 +145,12 @@ enum OverlayFactory {
     // MARK: - Side label
 
     /// "Original" or "Final Mix", centred near the top of the Pro Tools band.
-    static func label(_ text: String, canvas: CGSize, band: CGRect) -> CGImage? {
+    static func label(_ text: String, canvas: CGSize, band: CGRect, shift: CGVector = .zero) -> CGImage? {
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }
 
-        return draw(canvas: canvas) { _ in
+        return draw(canvas: canvas) { context in
+            context.translateBy(x: shift.dx, y: shift.dy)
             let size = fit(value, maxWidth: band.width * 0.8, start: 76, font: { Typography.fett($0) }, tracking: Typography.fettTracking)
             let font = Typography.fett(size)
             let shadow = NSShadow()
